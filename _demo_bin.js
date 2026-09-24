@@ -57,7 +57,7 @@
     return new constructorFcn(module, glCanvas);
   };
 
-  // ../../packages/core/dist/index.js
+  // node_modules/@litertjs/core/dist/index.js
   var ElementType = {
     NONE: 0,
     FLOAT32: 1,
@@ -114,9 +114,6 @@
     [TensorBufferType.WEB_GPU_BUFFER_FP16]: "WEB_GPU_BUFFER_FP16",
     [TensorBufferType.WEB_GPU_BUFFER_PACKED]: "WEB_GPU_BUFFER_PACKED"
   };
-  var Float16ArrayCtor = typeof Float16Array !== "undefined" ? Float16Array : void 0;
-  var BigInt64ArrayCtor = typeof BigInt64Array !== "undefined" ? BigInt64Array : void 0;
-  var BigUint64ArrayCtor = typeof BigUint64Array !== "undefined" ? BigUint64Array : void 0;
   var DATATYPES = Object.freeze([
     {
       dtype: "float32",
@@ -132,51 +129,11 @@
       dtype: "uint8",
       typedArrayConstructor: Uint8Array,
       elementType: ElementType.UINT8
-    },
-    {
-      dtype: "int8",
-      typedArrayConstructor: Int8Array,
-      elementType: ElementType.INT8
-    },
-    {
-      dtype: "bool",
-      typedArrayConstructor: Uint8Array,
-      elementType: ElementType.BOOL
-    },
-    {
-      dtype: "uint16",
-      typedArrayConstructor: Uint16Array,
-      elementType: ElementType.UINT16
-    },
-    {
-      dtype: "int16",
-      typedArrayConstructor: Int16Array,
-      elementType: ElementType.INT16
-    },
-    {
-      dtype: "float16",
-      typedArrayConstructor: Float16ArrayCtor,
-      elementType: ElementType.FLOAT16
-    },
-    {
-      dtype: "int64",
-      typedArrayConstructor: BigInt64ArrayCtor,
-      elementType: ElementType.INT64
-    },
-    {
-      dtype: "uint64",
-      typedArrayConstructor: BigUint64ArrayCtor,
-      elementType: ElementType.UINT64
-    },
-    {
-      dtype: "float64",
-      typedArrayConstructor: Float64Array,
-      elementType: ElementType.FLOAT64
     }
   ]);
   function getDataType(val) {
     for (const dataTypeMapping of DATATYPES) {
-      if (dataTypeMapping.dtype === val || dataTypeMapping.typedArrayConstructor === val || dataTypeMapping.typedArrayConstructor && val instanceof dataTypeMapping.typedArrayConstructor || dataTypeMapping.elementType === val) {
+      if (dataTypeMapping.dtype === val || dataTypeMapping.typedArrayConstructor === val || val instanceof dataTypeMapping.typedArrayConstructor || dataTypeMapping.elementType === val) {
         return dataTypeMapping;
       }
     }
@@ -185,7 +142,9 @@
     } else if (val instanceof Object) {
       throw new Error(`Typed array ${"name" in val ? val.name : val.constructor.name} is not supported.`);
     } else {
-      throw new Error(`Element type ${ElementTypeName[val] ?? val} is not supported.`);
+      throw new Error(
+        `Element type ${ElementTypeName[val] ?? val} is not supported.`
+      );
     }
   }
   var LiteRtNotLoadedError = class extends Error {
@@ -303,8 +262,8 @@
   function parseData(remainingArgs) {
     const data = remainingArgs.shift();
     const liteRtWasm = getGlobalLiteRt().liteRtWasm;
-    if (data instanceof liteRtWasm.LiteRtTensorHandle) {
-      return { liteRtTensorHandle: data };
+    if (data instanceof liteRtWasm.LiteRtTensorBuffer) {
+      return { liteRtTensorBuffer: data };
     } else if (ArrayBuffer.isView(data)) {
       return { typedArray: data };
     } else if (data instanceof GPUBuffer) {
@@ -364,7 +323,7 @@
   var _a;
   var Tensor = (_a = class {
     constructor(a3, b3, c4, d3, e5) {
-      __publicField(this, "liteRtTensorHandle");
+      __publicField(this, "liteRtTensorBuffer");
       __publicField(this, "type");
       __publicField(this, "environment");
       __publicField(this, "deletedInternal", false);
@@ -372,7 +331,6 @@
       const {
         typedArray,
         gpuBuffer,
-        liteRtTensorHandle,
         liteRtTensorBuffer,
         shape,
         dataType,
@@ -381,19 +339,18 @@
       } = parseArgs([a3, b3, c4, d3, e5]);
       this.onDelete = onDelete;
       this.environment = environment ?? getGlobalLiteRt().getDefaultEnvironment();
-      const handle = liteRtTensorHandle ?? liteRtTensorBuffer;
-      if (handle) {
+      if (liteRtTensorBuffer) {
         if (shape) {
           throw new Error(
-            "A LiteRtTensorHandle cannot be provided with a shape."
+            "A LiteRtTensorBuffer cannot be provided with a shape."
           );
         }
         if (dataType) {
           throw new Error(
-            "A LiteRtTensorHandle cannot be provided with a data type."
+            "A LiteRtTensorBuffer cannot be provided with a data type."
           );
         }
-        this.liteRtTensorHandle = handle;
+        this.liteRtTensorBuffer = liteRtTensorBuffer;
       } else if (gpuBuffer) {
         if (!shape) {
           throw new Error("A GPUBuffer must be provided with a shape.");
@@ -401,13 +358,13 @@
         if (!dataType) {
           throw new Error("A GPUBuffer must be provided with a data type.");
         }
-        const [liteRtTensorHandle2, webGpuBufferPtr] = webGpuBufferToLiteRtTensorHandle(
+        const [liteRtTensorBuffer2, webGpuBufferPtr] = webGpuBufferToLiteRtTensorBuffer(
           gpuBuffer,
           shape,
           dataType,
           this.environment
         );
-        this.liteRtTensorHandle = liteRtTensorHandle2;
+        this.liteRtTensorBuffer = liteRtTensorBuffer2;
         const onDelete2 = this.onDelete;
         this.onDelete = () => {
           const liteRtWasm = getGlobalLiteRt().liteRtWasm;
@@ -415,87 +372,27 @@
           onDelete2?.();
         };
       } else if (typedArray) {
-        this.liteRtTensorHandle = typedArrayToLiteRtTensorHandle(
+        this.liteRtTensorBuffer = typedArrayToLiteRtTensorBuffer(
           typedArray,
           shape,
-          dataType,
           environment
         );
       } else {
         throw new Error("No data provided to create a Tensor.");
       }
-      this.type = liteRtTensorHandleToTensorType(this.liteRtTensorHandle);
-    }
-    /** @deprecated Use liteRtTensorHandle instead. */
-    get liteRtTensorBuffer() {
-      console.warn(
-        "liteRtTensorBuffer is deprecated. Use liteRtTensorHandle instead."
-      );
-      return this.liteRtTensorHandle;
-    }
-    get shape() {
-      return this.type.layout.dimensions;
-    }
-    get dtype() {
-      return this.type.dtype;
+      this.type = liteRtTensorBufferToTensorType(this.liteRtTensorBuffer);
     }
     static fromTypedArray(data, shape, environment) {
       return new _a(data, shape, environment);
-    }
-    /**
-     * Creates a symbolic placeholder Tensor for JIT graph compilation.
-     */
-    static createPlaceholder(options = {}) {
-      const globalLiteRt2 = getGlobalLiteRt();
-      const liteRtWasm = globalLiteRt2.liteRtWasm;
-      const shape = options.shape ?? [1];
-      const dtype = options.dataType ?? "float32";
-      const name = options.name || `placeholder_${_a.placeholderCounter++}`;
-      const dimensionsVector = new liteRtWasm.VectorInt32();
-      fillEmscriptenVector(shape, dimensionsVector);
-      const layout = liteRtWasm.LiteRtLayout.create(dimensionsVector);
-      dimensionsVector.delete();
-      const rankedTensorType = liteRtWasm.LiteRtRankedTensorType.create(
-        { value: getDataType(dtype).elementType },
-        layout
-      );
-      layout.delete();
-      const handle = liteRtWasm.LiteRtTensorHandle.createPlaceholder(
-        rankedTensorType,
-        name
-      );
-      rankedTensorType.delete();
-      return new _a(handle, options.environment);
     }
     ensureNotDeleted() {
       if (this.deleted) {
         throw new Error("Tensor is deleted and cannot be used.");
       }
     }
-    add(other) {
-      return add(this, other);
-    }
-    mul(other) {
-      return mul(this, other);
-    }
-    sub(other) {
-      return sub(this, other);
-    }
-    div(other) {
-      return div(this, other);
-    }
-    relu() {
-      return relu(this);
-    }
-    toString() {
-      this.ensureNotDeleted();
-      return `${this.type.dtype}[${Array.from(this.type.layout.dimensions).join(
-        ", "
-      )}]`;
-    }
     async data() {
       this.ensureNotDeleted();
-      if (this.liteRtTensorHandle.bufferType().value === TensorBufferType.HOST_MEMORY) {
+      if (this.liteRtTensorBuffer.bufferType().value === TensorBufferType.HOST_MEMORY) {
         return this.toTypedArray();
       }
       const copy = await this.copyTo("wasm");
@@ -506,43 +403,38 @@
     toTypedArray() {
       this.ensureNotDeleted();
       const liteRtWasm = getGlobalLiteRt().liteRtWasm;
-      if (this.liteRtTensorHandle.isWebGpuMemory()) {
+      if (this.liteRtTensorBuffer.isWebGpuMemory()) {
         throw new Error(
           "Cannot convert a Tensor with WebGPU memory to a TypedArray."
         );
       }
-      if (this.liteRtTensorHandle.bufferType().value !== liteRtWasm.LiteRtTensorBufferType.HOST_MEMORY.value) {
+      if (this.liteRtTensorBuffer.bufferType().value !== liteRtWasm.LiteRtTensorBufferType.HOST_MEMORY.value) {
         throw new Error(
           "Cannot convert a Tensor with non-host memory to a TypedArray."
         );
       }
-      if (this.liteRtTensorHandle.size() !== this.liteRtTensorHandle.packedSize() || this.liteRtTensorHandle.offset() !== 0) {
+      if (this.liteRtTensorBuffer.size() !== this.liteRtTensorBuffer.packedSize() || this.liteRtTensorBuffer.offset() !== 0) {
         throw new Error("Tensors with strides or padding are not yet supported.");
       }
-      const rankedTensorType = this.liteRtTensorHandle.tensorType();
+      const rankedTensorType = this.liteRtTensorBuffer.tensorType();
       const elementType = rankedTensorType.elementType();
       const byteWidth = liteRtWasm.liteRtGetByteWidth(elementType);
       rankedTensorType.delete();
       const typedArrayConstructor = getDataType(
         elementType.value
       ).typedArrayConstructor;
-      if (typedArrayConstructor === void 0) {
-        throw new Error(
-          `DType ${ElementTypeName[elementType.value]} is not supported in this environment (missing TypedArray constructor).`
-        );
-      }
       if (typedArrayConstructor.BYTES_PER_ELEMENT !== byteWidth) {
         throw new Error(
           `Byte width ${byteWidth} of the tensor's element type ${ElementTypeName[elementType.value]} does not match the expected byte width ${typedArrayConstructor.BYTES_PER_ELEMENT} of the ${typedArrayConstructor.name}.`
         );
       }
-      const dataPtr = this.liteRtTensorHandle.lock(
+      const dataPtr = this.liteRtTensorBuffer.lock(
         getGlobalLiteRt().liteRtWasm.LiteRtTensorBufferLockMode.READ
       );
       try {
         const uint8Array = liteRtWasm.HEAPU8.slice(
           dataPtr,
-          dataPtr + this.liteRtTensorHandle.packedSize()
+          dataPtr + this.liteRtTensorBuffer.packedSize()
         );
         const typedArray = new typedArrayConstructor(
           uint8Array.buffer,
@@ -551,12 +443,12 @@
         );
         return typedArray;
       } finally {
-        this.liteRtTensorHandle.unlock();
+        this.liteRtTensorBuffer.unlock();
       }
     }
     getBufferType() {
       this.ensureNotDeleted();
-      return this.liteRtTensorHandle.bufferType().value;
+      return this.liteRtTensorBuffer.bufferType().value;
     }
     /**
      * Returns the underlying GPUBuffer of the Tensor.
@@ -574,21 +466,21 @@
     toGpuBuffer() {
       this.ensureNotDeleted();
       const liteRtWasm = getGlobalLiteRt().liteRtWasm;
-      if (!this.liteRtTensorHandle.isWebGpuMemory()) {
+      if (!this.liteRtTensorBuffer.isWebGpuMemory()) {
         throw new Error(
           "Cannot convert a Tensor with non-WebGPU memory to a GPUBuffer."
         );
       }
-      const bufferTypeValue = this.liteRtTensorHandle.bufferType().value;
-      if (bufferTypeValue !== liteRtWasm.LiteRtTensorBufferType.WEB_GPU_BUFFER.value && bufferTypeValue !== liteRtWasm.LiteRtTensorBufferType.WEB_GPU_BUFFER_PACKED.value) {
+      const bufferTypeValue = this.liteRtTensorBuffer.bufferType().value;
+      if (bufferTypeValue !== liteRtWasm.LiteRtTensorBufferType.WEB_GPU_BUFFER.value && bufferTypeValue !== liteRtWasm.LiteRtTensorBufferType.WEB_GPU_BUFFER_FP16.value && bufferTypeValue !== liteRtWasm.LiteRtTensorBufferType.WEB_GPU_BUFFER_PACKED.value) {
         throw new Error(
           "Cannot convert a Tensor with host memory to a GPUBuffer."
         );
       }
-      if (this.liteRtTensorHandle.size() !== this.liteRtTensorHandle.packedSize() || this.liteRtTensorHandle.offset() !== 0) {
+      if (this.liteRtTensorBuffer.size() !== this.liteRtTensorBuffer.packedSize() || this.liteRtTensorBuffer.offset() !== 0) {
         throw new Error("Tensors with strides or padding are not yet supported.");
       }
-      const gpuBufferId = this.liteRtTensorHandle.getWebGpuBuffer();
+      const gpuBufferId = this.liteRtTensorBuffer.getWebGpuBuffer();
       return liteRtWasm.WebGPU.getJsObject(gpuBufferId);
     }
     getCopyFunctionSet(destination) {
@@ -650,7 +542,7 @@
       return copyFunctionSet.moveTo(this, options);
     }
     get bufferType() {
-      return this.liteRtTensorHandle.bufferType().value;
+      return this.liteRtTensorBuffer.bufferType().value;
     }
     get accelerator() {
       const accelerator = TensorBufferTypeToAccelerator[this.bufferType];
@@ -669,12 +561,12 @@
         return;
       }
       this.deletedInternal = true;
-      this.liteRtTensorHandle.delete();
+      this.liteRtTensorBuffer.delete();
       this.onDelete?.();
     }
-  }, __publicField(_a, "copyFunctions", /* @__PURE__ */ new Map()), __publicField(_a, "placeholderCounter", 0), _a);
-  function liteRtTensorHandleToTensorType(liteRtTensorHandle) {
-    const liteRtRankedTensorType = liteRtTensorHandle.tensorType();
+  }, __publicField(_a, "copyFunctions", /* @__PURE__ */ new Map()), _a);
+  function liteRtTensorBufferToTensorType(liteRtTensorBuffer) {
+    const liteRtRankedTensorType = liteRtTensorBuffer.tensorType();
     const elementType = liteRtRankedTensorType.elementType();
     const liteRtLayout = liteRtRankedTensorType.layout();
     const dimensions = liteRtLayout.dimensions();
@@ -685,7 +577,7 @@
       layout: { dimensions: emscriptenVectorToArray(dimensions) }
     };
   }
-  function webGpuBufferToLiteRtTensorHandle(gpuBuffer, shape, dtype, environment) {
+  function webGpuBufferToLiteRtTensorBuffer(gpuBuffer, shape, dtype, environment) {
     const globalLiteRt2 = getGlobalLiteRt();
     const liteRtWasm = globalLiteRt2.liteRtWasm;
     const dimensionsVector = new liteRtWasm.VectorInt32();
@@ -698,7 +590,7 @@
     );
     layout.delete();
     const importedGpuBufferPtr = liteRtWasm.WebGPU.importJsBuffer(gpuBuffer);
-    const liteRtTensorHandle = liteRtWasm.LiteRtTensorHandle.createFromWebGpuBuffer(
+    const liteRtTensorBuffer = liteRtWasm.LiteRtTensorBuffer.createFromWebGpuBuffer(
       environment.liteRtEnvironment,
       rankedTensorType,
       liteRtWasm.LiteRtTensorBufferType.WEB_GPU_BUFFER_PACKED,
@@ -706,13 +598,13 @@
       gpuBuffer.size
     );
     rankedTensorType.delete();
-    return [liteRtTensorHandle, importedGpuBufferPtr];
+    return [liteRtTensorBuffer, importedGpuBufferPtr];
   }
-  function typedArrayToLiteRtTensorHandle(data, shape, dataType, environment) {
+  function typedArrayToLiteRtTensorBuffer(data, shape, environment) {
     const globalLiteRt2 = getGlobalLiteRt();
     const liteRtWasm = globalLiteRt2.liteRtWasm;
     environment = environment ?? globalLiteRt2.getDefaultEnvironment();
-    const elementType = dataType ? getDataType(dataType).elementType : getDataType(data).elementType;
+    const elementType = getDataType(data).elementType;
     const dimensionsVector = new liteRtWasm.VectorInt32();
     fillEmscriptenVector(shape ?? [data.length], dimensionsVector);
     const layout = liteRtWasm.LiteRtLayout.create(dimensionsVector);
@@ -738,14 +630,14 @@
         `Byte length ${bufferSize} of the provided TypedArray does not match the expected buffer size ${expectedBufferSize}.`
       );
     }
-    const liteRtTensorHandle = liteRtWasm.LiteRtTensorHandle.createManaged(
+    const liteRtTensorBuffer = liteRtWasm.LiteRtTensorBuffer.createManaged(
       environment.liteRtEnvironment,
       liteRtWasm.LiteRtTensorBufferType.HOST_MEMORY,
       rankedTensorType,
       bufferSize
     );
     rankedTensorType.delete();
-    const dataPtr = liteRtTensorHandle.lock(
+    const dataPtr = liteRtTensorBuffer.lock(
       liteRtWasm.LiteRtTensorBufferLockMode.WRITE
     );
     try {
@@ -756,55 +648,9 @@
       );
       liteRtWasm.HEAPU8.set(uint8Data, dataPtr);
     } finally {
-      liteRtTensorHandle.unlock();
+      liteRtTensorBuffer.unlock();
     }
-    return liteRtTensorHandle;
-  }
-  function makeBinOp(op) {
-    return (a3, b3) => {
-      if (a3.environment !== b3.environment) {
-        throw new Error(
-          "Cannot perform arithmetic operations on tensors from different environments."
-        );
-      }
-      a3.ensureNotDeleted();
-      b3.ensureNotDeleted();
-      const resultHandle = op(
-        getGlobalLiteRt().liteRtWasm,
-        a3.liteRtTensorHandle,
-        b3.liteRtTensorHandle
-      );
-      return new Tensor(resultHandle, a3.environment);
-    };
-  }
-  function makeUnaryOp(op) {
-    return (a3) => {
-      a3.ensureNotDeleted();
-      const resultHandle = op(getGlobalLiteRt().liteRtWasm, a3.liteRtTensorHandle);
-      return new Tensor(resultHandle, a3.environment);
-    };
-  }
-  var add = makeBinOp(
-    (wasm, a3, b3) => wasm.add(a3, b3)
-  );
-  var mul = makeBinOp(
-    (wasm, a3, b3) => wasm.mul(a3, b3)
-  );
-  var sub = makeBinOp(
-    (wasm, a3, b3) => wasm.sub(a3, b3)
-  );
-  var div = makeBinOp(
-    (wasm, a3, b3) => wasm.div(a3, b3)
-  );
-  var relu = makeUnaryOp(
-    (wasm, a3) => wasm.relu(a3)
-  );
-  function shapesEqual(a3, b3) {
-    if (a3.length !== b3.length) return false;
-    for (let i5 = 0; i5 < a3.length; i5++) {
-      if (a3[i5] !== b3[i5]) return false;
-    }
-    return true;
+    return liteRtTensorBuffer;
   }
   var CompiledModelSignatureRunner = class {
     constructor(signatureIndex, liteRtModel, liteRtCompiledModel, options) {
@@ -932,12 +778,6 @@
         if (supportedBufferTypes.size === 0) {
           throw new Error(`Tensor ${inputDetails[i5].name} with index ${inputDetails[i5].index} has no supported buffer types.`);
         }
-        if (input.type.dtype !== inputDetails[i5].dtype || !shapesEqual(input.type.layout.dimensions, inputDetails[i5].shape)) {
-          const expectedTypeStr = `${inputDetails[i5].dtype}[${Array.from(inputDetails[i5].shape).join(", ")}]`;
-          throw new Error(
-            `TensorBuffer ranked tensor type ${input.toString()} does not match expected ranked tensor type ${expectedTypeStr}`
-          );
-        }
         if (supportedBufferTypes.has(bufferType)) {
           inputsOnAccelerator.push(input);
         } else {
@@ -965,19 +805,19 @@
           i5
         );
         getGlobalLiteRt().liteRtWasm.checkTensorBufferCompatible(
-          inputTensor.liteRtTensorHandle,
+          inputTensor.liteRtTensorBuffer,
           expectedRankedTensorType,
           inputRequirements
         );
         expectedRankedTensorType.delete();
         inputRequirements.delete();
       }
-      const outputTensorHandles = await this.liteRtCompiledModel.run(
+      const outputTensorBuffers = await this.liteRtCompiledModel.run(
         this.signatureIndex,
-        input.map((tensor) => tensor.liteRtTensorHandle)
+        input.map((tensor) => tensor.liteRtTensorBuffer)
       );
-      return outputTensorHandles.map(
-        (tensorHandle) => new Tensor(tensorHandle, this.options.environment)
+      return outputTensorBuffers.map(
+        (tensorBuffer) => new Tensor(tensorBuffer, this.options.environment)
       );
     }
     get deleted() {
@@ -1149,14 +989,118 @@
       this.onDelete();
     }
   };
-  function fillCompileOptions(compileOptions = {}, environment, defaultThreadCount) {
-    return {
-      environment,
-      accelerator: compileOptions.accelerator ?? (environment.webGpuDevice ? "webgpu" : "wasm"),
-      cpuOptions: compileOptions.cpuOptions ?? { numThreads: defaultThreadCount },
-      gpuOptions: compileOptions.gpuOptions ?? {},
-      webNNOptions: compileOptions.webNNOptions ?? {}
-    };
+  function isWebGPUSupported() {
+    return !!(typeof globalThis !== "undefined" && globalThis.navigator && globalThis.navigator.gpu);
+  }
+  function loadAndCompile(model, compileOptions) {
+    return getGlobalLiteRt().loadAndCompile(model, compileOptions);
+  }
+  var LiteRt = class {
+    constructor(wasmModule) {
+      __publicField(this, "liteRtWasm");
+      __publicField(this, "defaultEnvironment");
+      __publicField(this, "objectsToDelete", /* @__PURE__ */ new Set());
+      this.liteRtWasm = wasmModule;
+      this.liteRtWasm.setupLogging();
+    }
+    setDefaultEnvironment(environment) {
+      this.defaultEnvironment = environment;
+    }
+    getDefaultEnvironment() {
+      if (!this.defaultEnvironment) {
+        throw new Error("Default environment is not set.");
+      }
+      return this.defaultEnvironment;
+    }
+    setWebGpuDevice(device) {
+      const oldEnvironment = this.getDefaultEnvironment();
+      this.setDefaultEnvironment(new Environment({
+        ...oldEnvironment.options,
+        webGpuDevice: device
+      }));
+    }
+    getWebGpuDevice() {
+      return this.getDefaultEnvironment().webGpuDevice;
+    }
+    /**
+     * Loads and compiles a LiteRt model.
+     *
+     * @param model The model data. This can be a string (the model url), a URL
+     *     object, a Uint8Array (the model bytes), or a
+     *     ReadableStreamDefaultReader (for streaming model loading).
+     * @param compileOptions The options for compiling the model. This includes
+     *     the accelerator to use ('webgpu' or 'wasm') and the WebGPU device
+     *     (for direct GPU model inputs / outputs).
+     * @returns A promise that resolves to the CompiledModel.
+     */
+    async loadAndCompile(model, compileOptions = {}) {
+      let modelData;
+      if (typeof model === "string" || model instanceof URL) {
+        modelData = await urlToUint8Array(model);
+      } else if (model instanceof Uint8Array) {
+        modelData = model;
+      } else if (model instanceof ReadableStreamDefaultReader) {
+        modelData = await readableStreamDefaultReaderToUint8Array(model);
+      } else {
+        throw new Error("Unsupported model type.");
+      }
+      const environment = compileOptions.environment ?? this.getDefaultEnvironment();
+      const accelerator = compileOptions.accelerator ?? (environment.webGpuDevice ? "webgpu" : "wasm");
+      const acceleratorIncludesWebGpu = Array.isArray(accelerator) ? accelerator.includes("webgpu") : accelerator === "webgpu";
+      if (acceleratorIncludesWebGpu && !environment.webGpuDevice) {
+        throw new Error(
+          "WebGPU was requested but no WebGPU device is set in the environment."
+        );
+      }
+      const cpuOptions = compileOptions.cpuOptions ?? { numThreads: this.liteRtWasm.getThreadCount() };
+      const filledCompileOptions = {
+        environment,
+        accelerator,
+        cpuOptions,
+        gpuOptions: compileOptions.gpuOptions ?? {},
+        webNNOptions: compileOptions.webNNOptions ?? {}
+      };
+      const ptr = this.liteRtWasm._malloc(modelData.byteLength);
+      this.liteRtWasm.HEAPU8.set(modelData, ptr);
+      const wasmModel = this.liteRtWasm.loadModel(
+        filledCompileOptions.environment.liteRtEnvironment,
+        ptr,
+        modelData.byteLength
+      );
+      const wasmCompiledModel = await this.liteRtWasm.compileModel(
+        filledCompileOptions.environment.liteRtEnvironment,
+        wasmModel,
+        filledCompileOptions
+      );
+      const loadedModel = new Model(wasmModel, () => {
+        this.liteRtWasm._free(ptr);
+      });
+      const compiledModel = new CompiledModel(
+        loadedModel,
+        wasmCompiledModel,
+        filledCompileOptions,
+        () => {
+          this.objectsToDelete.delete(compiledModel);
+        }
+      );
+      this.objectsToDelete.add(compiledModel);
+      return compiledModel;
+    }
+    delete() {
+      for (const object of this.objectsToDelete) {
+        object.delete();
+      }
+    }
+  };
+  function pathToString(path) {
+    return path;
+  }
+  function appendPathSegment(path, segment) {
+    if (!path) return segment;
+    if (!segment) return path;
+    const pathWithSlash = path.endsWith("/") ? path : path + "/";
+    const segmentWithoutSlash = segment.startsWith("/") ? segment.substring(1) : segment;
+    return pathWithSlash + segmentWithoutSlash;
   }
   var WASM_RELAXED_SIMD_CHECK = new Uint8Array([
     0,
@@ -1313,550 +1257,6 @@
       throw result.error;
     }
   }
-  function isPlaceholderSpec(value) {
-    return typeof value === "object" && value !== null && !(value instanceof Tensor) && "shape" in value && Array.isArray(value.shape) && (value.shape.length === 0 || typeof value.shape[0] === "number");
-  }
-  function normalizeCompileArgs(args) {
-    if (args.length === 0) {
-      throw new Error("compile() requires at least one input specification.");
-    }
-    if (args.length === 1) {
-      const arg = args[0];
-      if (typeof arg === "object" && arg !== null && !(arg instanceof Tensor) && !isPlaceholderSpec(arg) && "signatures" in arg) {
-        const sigs = arg.signatures;
-        if (Array.isArray(sigs)) {
-          return sigs.map((item, idx) => {
-            if (Array.isArray(item)) {
-              return { name: `signature_${idx}`, rawInputs: item };
-            } else if (typeof item === "object" && item !== null && "inputs" in item) {
-              const rawInputs = Array.isArray(item.inputs) ? item.inputs : [item.inputs];
-              return { name: item.name ?? `signature_${idx}`, rawInputs };
-            } else {
-              return { name: `signature_${idx}`, rawInputs: [item] };
-            }
-          });
-        } else if (typeof sigs === "object" && sigs !== null) {
-          return Object.keys(sigs).map((name) => {
-            const val = sigs[name];
-            const rawInputs = Array.isArray(val) ? val : [val];
-            return { name, rawInputs };
-          });
-        }
-      }
-      if (Array.isArray(arg)) {
-        const isMultiSig = arg.length > 0 && arg.every(
-          (item) => Array.isArray(item) || typeof item === "object" && item !== null && !(item instanceof Tensor) && !isPlaceholderSpec(item) && "inputs" in item
-        );
-        if (isMultiSig) {
-          return arg.map((item, idx) => {
-            if (Array.isArray(item)) {
-              return { name: `signature_${idx}`, rawInputs: item };
-            } else {
-              const rawInputs = Array.isArray(item.inputs) ? item.inputs : [item.inputs];
-              return { name: item.name ?? `signature_${idx}`, rawInputs };
-            }
-          });
-        }
-      }
-      if (typeof arg === "object" && arg !== null && !(arg instanceof Tensor) && !isPlaceholderSpec(arg) && !Array.isArray(arg)) {
-        const keys = Object.keys(arg);
-        const isDictInput = keys.every(
-          (k2) => arg[k2] instanceof Tensor || isPlaceholderSpec(arg[k2])
-        );
-        if (!isDictInput && keys.length > 0) {
-          return keys.map((name) => {
-            const val = arg[name];
-            const rawInputs = Array.isArray(val) ? val : [val];
-            return { name, rawInputs };
-          });
-        }
-      }
-    }
-    return [{ name: "serving_default", rawInputs: args }];
-  }
-  var AuthoredModel = class {
-    constructor(fn, options = {}) {
-      __publicField(this, "compiledModels", []);
-      __publicField(this, "compilationPromise");
-      __publicField(this, "cacheKeyToSignature", /* @__PURE__ */ new Map());
-      __publicField(this, "deletedInternal", false);
-      this.fn = fn;
-      this.options = options;
-    }
-    get compiledModel() {
-      return this.compiledModels.length > 0 ? this.compiledModels[this.compiledModels.length - 1] : void 0;
-    }
-    get deleted() {
-      return this.deletedInternal;
-    }
-    ensureNotDeleted() {
-      if (this.deletedInternal) {
-        throw new Error("AuthoredModel is deleted and cannot be used.");
-      }
-    }
-    parseInputs(args, requireTensors) {
-      let rawInputs = [];
-      let isSingleInput = false;
-      let isArrayInput = false;
-      let isDictInput = false;
-      let dictKeys = [];
-      if (args.length === 1) {
-        const first = args[0];
-        if (first instanceof Tensor || isPlaceholderSpec(first)) {
-          rawInputs = [first];
-          isSingleInput = true;
-        } else if (Array.isArray(first)) {
-          rawInputs = first;
-          isArrayInput = true;
-        } else if (typeof first === "object" && first !== null) {
-          dictKeys = Object.keys(first).sort();
-          rawInputs = dictKeys.map((k2) => first[k2]);
-          isDictInput = true;
-        }
-      } else {
-        rawInputs = args;
-      }
-      const inputTensors = [];
-      const normalizedInputs = [];
-      for (let i5 = 0; i5 < rawInputs.length; i5++) {
-        const item = rawInputs[i5];
-        if (item instanceof Tensor) {
-          inputTensors.push(item);
-          normalizedInputs.push({
-            shape: item.type.layout.dimensions,
-            dtype: item.type.dtype
-          });
-        } else if (!requireTensors && isPlaceholderSpec(item)) {
-          const dtype = item.dataType ?? "float32";
-          normalizedInputs.push({
-            shape: item.shape,
-            dtype
-          });
-        } else {
-          const expected = requireTensors ? "Tensor" : "Tensor or PlaceholderSpec ({ shape: Dimensions, dataType?: DType })";
-          throw new Error(`Input at index ${i5} is not a valid ${expected}.`);
-        }
-      }
-      const cacheKey = isDictInput ? dictKeys.map(
-        (k2, i5) => `${k2}:${normalizedInputs[i5].dtype}[${normalizedInputs[i5].shape.join(",")}]`
-      ).join(";") : normalizedInputs.map((n5) => `${n5.dtype}[${n5.shape.join(",")}]`).join(";");
-      return {
-        normalizedInputs,
-        inputTensors: requireTensors ? inputTensors : void 0,
-        cacheKey,
-        isSingleInput,
-        isArrayInput,
-        isDictInput,
-        dictKeys
-      };
-    }
-    async compileSignaturesInternal(specs) {
-      const globalLiteRt2 = getGlobalLiteRt();
-      const liteRtWasm = globalLiteRt2.liteRtWasm;
-      const environment = this.options.environment ?? globalLiteRt2.getDefaultEnvironment();
-      const parsedSignatures = [];
-      const batchSeenKeys = /* @__PURE__ */ new Set();
-      for (let i5 = 0; i5 < specs.length; i5++) {
-        const spec = specs[i5];
-        const parsed = this.parseInputs(
-          spec.rawInputs,
-          /* requireTensors= */
-          false
-        );
-        if (batchSeenKeys.has(parsed.cacheKey)) {
-          throw new Error(
-            `Duplicate signature input specification for '${parsed.cacheKey}'. Each signature in a compile call must have distinct input shapes or dtypes.`
-          );
-        }
-        batchSeenKeys.add(parsed.cacheKey);
-        const sigName = spec.name ?? (specs.length === 1 ? "serving_default" : `signature_${i5}`);
-        parsedSignatures.push({ name: sigName, parsed });
-      }
-      const wasmSignatureSpecs = [];
-      const allPlaceholders = [];
-      const allOutputs = [];
-      let modelDataPtr = 0;
-      let modelSize = 0;
-      const signatureOutputsMeta = [];
-      try {
-        for (const { name, parsed } of parsedSignatures) {
-          const placeholders = parsed.normalizedInputs.map(
-            (norm, idx) => {
-              const placeholderName = parsed.isDictInput ? parsed.dictKeys[idx] : `input_${idx}`;
-              return Tensor.createPlaceholder({
-                shape: norm.shape,
-                dataType: norm.dtype,
-                environment,
-                name: placeholderName
-              });
-            }
-          );
-          allPlaceholders.push(...placeholders);
-          let symbolicOutputs;
-          if (parsed.isSingleInput) {
-            symbolicOutputs = this.fn(placeholders[0]);
-          } else if (parsed.isArrayInput) {
-            symbolicOutputs = this.fn(placeholders);
-          } else if (parsed.isDictInput) {
-            const dictArg = {};
-            parsed.dictKeys.forEach((k2, idx) => {
-              dictArg[k2] = placeholders[idx];
-            });
-            symbolicOutputs = this.fn(dictArg);
-          } else {
-            symbolicOutputs = this.fn(...placeholders);
-          }
-          let outputTensors = [];
-          let outputFormat = "single";
-          let outputDictKeys;
-          if (symbolicOutputs instanceof Tensor) {
-            outputTensors = [symbolicOutputs];
-            outputFormat = "single";
-          } else if (Array.isArray(symbolicOutputs)) {
-            outputTensors = symbolicOutputs;
-            outputFormat = "array";
-          } else if (typeof symbolicOutputs === "object" && symbolicOutputs !== null) {
-            outputDictKeys = Object.keys(symbolicOutputs);
-            outputTensors = outputDictKeys.map((k2) => symbolicOutputs[k2]);
-            outputFormat = "dict";
-          } else {
-            throw new Error(
-              "AuthoredModel function must return a Tensor, Tensor[], or Record<string, Tensor>."
-            );
-          }
-          for (let i5 = 0; i5 < outputTensors.length; i5++) {
-            if (!(outputTensors[i5] instanceof Tensor)) {
-              throw new Error(
-                `Output at index ${i5} for signature '${name}' is not a Tensor.`
-              );
-            }
-          }
-          allOutputs.push(...outputTensors);
-          wasmSignatureSpecs.push({
-            name,
-            inputHandles: placeholders.map((p3) => p3.liteRtTensorHandle),
-            outputHandles: outputTensors.map((o6) => o6.liteRtTensorHandle)
-          });
-          signatureOutputsMeta.push({
-            outputFormat,
-            outputDictKeys
-          });
-        }
-        const modelData = liteRtWasm.createModelDataFromTensorGraph(wasmSignatureSpecs);
-        modelDataPtr = modelData.modelDataPtr;
-        modelSize = modelData.modelSize;
-      } finally {
-        for (const p3 of allPlaceholders) {
-          p3.delete();
-        }
-        for (const o6 of allOutputs) {
-          o6.delete();
-        }
-      }
-      const wasmModel = liteRtWasm.loadModel(
-        environment.liteRtEnvironment,
-        modelDataPtr,
-        modelSize
-      );
-      const filledCompileOptions = fillCompileOptions(
-        this.options,
-        environment,
-        liteRtWasm.getThreadCount()
-      );
-      let wasmCompiledModel;
-      try {
-        wasmCompiledModel = await liteRtWasm.compileModel(
-          environment.liteRtEnvironment,
-          wasmModel,
-          filledCompileOptions
-        );
-      } catch (e5) {
-        liteRtWasm._free(modelDataPtr);
-        wasmModel.delete();
-        throw e5;
-      }
-      const loadedModel = new Model(wasmModel, () => {
-        liteRtWasm._free(modelDataPtr);
-      });
-      const compiledModel = new CompiledModel(
-        loadedModel,
-        wasmCompiledModel,
-        filledCompileOptions,
-        () => {
-        }
-      );
-      this.compiledModels.push(compiledModel);
-      for (let i5 = 0; i5 < parsedSignatures.length; i5++) {
-        const { name, parsed } = parsedSignatures[i5];
-        const meta = signatureOutputsMeta[i5];
-        this.cacheKeyToSignature.set(parsed.cacheKey, {
-          compiledModel,
-          signatureName: name,
-          cacheKey: parsed.cacheKey,
-          outputFormat: meta.outputFormat,
-          outputDictKeys: meta.outputDictKeys
-        });
-      }
-      return compiledModel;
-    }
-    /**
-     * Compiles the model graph ahead of time into a CompiledModel.
-     *
-     * Can be invoked with:
-     * 1. A single signature (e.g. `compile({ shape: [1, 256, 256, 3] })` or `compile(specA, specB)`)
-     * 2. Multiple signatures as an array of input tuples (e.g. `compile([ [{shape: [1, 10]}], [{shape: [4, 10]}] ])`)
-     * 3. Multiple named signatures as a dictionary (e.g. `compile({ lowRes: [{shape: [1, 10]}], highRes: [{shape: [4, 10]}] })`)
-     *
-     * When multiple signatures are provided in a single compile() call, they share the same constant weight buffers.
-     * Multiple compile() calls are permitted; each call generates a new CompiledModel.
-     */
-    async compile(...args) {
-      this.ensureNotDeleted();
-      const specs = normalizeCompileArgs(args);
-      if (specs.length === 1 && specs[0].name === "signature_0") {
-        specs[0].name = "serving_default";
-      }
-      this.compilationPromise = this.compileSignaturesInternal(specs);
-      await this.compilationPromise;
-    }
-    /**
-     * Returns true if a compiled signature exists in the model for the given input specs or tensors.
-     */
-    hasCompiledSignature(...args) {
-      this.ensureNotDeleted();
-      if (this.compiledModels.length === 0) {
-        return false;
-      }
-      const { cacheKey } = this.parseInputs(
-        args,
-        /* requireTensors= */
-        false
-      );
-      return this.cacheKeyToSignature.has(cacheKey);
-    }
-    /**
-     * Executes the authored tensor model with concrete inputs.
-     *
-     * If the input shape/type has not been compiled yet, it is compiled silently under the hood
-     * with a notice logged to the console.
-     */
-    async run(...args) {
-      this.ensureNotDeleted();
-      const parsed = this.parseInputs(
-        args,
-        /* requireTensors= */
-        true
-      );
-      if (this.compilationPromise) {
-        await this.compilationPromise;
-      }
-      this.ensureNotDeleted();
-      let signature = this.cacheKeyToSignature.get(parsed.cacheKey);
-      if (!signature) {
-        console.log(
-          `[LiteRT] JIT compiling model for input shape/type '${parsed.cacheKey}' under the hood...`
-        );
-        this.compilationPromise = this.compileSignaturesInternal([
-          { name: "serving_default", rawInputs: args }
-        ]);
-        await this.compilationPromise;
-        signature = this.cacheKeyToSignature.get(parsed.cacheKey);
-      }
-      const rawOutputs = await signature.compiledModel.run(
-        signature.signatureName,
-        parsed.inputTensors
-      );
-      switch (signature.outputFormat) {
-        case "single":
-          return rawOutputs[0];
-        case "array":
-          return rawOutputs;
-        case "dict": {
-          const result = {};
-          signature.outputDictKeys.forEach((k2, idx) => {
-            result[k2] = rawOutputs[idx];
-          });
-          return result;
-        }
-        default: {
-          const exhaustiveCheck = signature.outputFormat;
-          throw new Error(`Unhandled output format: ${exhaustiveCheck}`);
-        }
-      }
-    }
-    delete() {
-      if (this.deletedInternal) {
-        return;
-      }
-      this.deletedInternal = true;
-      for (const model of this.compiledModels) {
-        model.delete();
-      }
-      this.compiledModels.length = 0;
-      this.cacheKeyToSignature.clear();
-    }
-  };
-  function isWebGPUSupported() {
-    return !!(typeof globalThis !== "undefined" && globalThis.navigator && globalThis.navigator.gpu);
-  }
-  function loadAndCompile(model, compileOptions) {
-    return getGlobalLiteRt().loadAndCompile(model, compileOptions);
-  }
-  var LiteRt = class {
-    constructor(wasmModule) {
-      __publicField(this, "liteRtWasm");
-      __publicField(this, "defaultEnvironment");
-      __publicField(this, "objectsToDelete", /* @__PURE__ */ new Set());
-      this.liteRtWasm = wasmModule;
-      this.liteRtWasm.setupLogging();
-    }
-    setDefaultEnvironment(environment) {
-      this.defaultEnvironment = environment;
-    }
-    getDefaultEnvironment() {
-      if (!this.defaultEnvironment) {
-        throw new Error("Default environment is not set.");
-      }
-      return this.defaultEnvironment;
-    }
-    setWebGpuDevice(device) {
-      const oldEnvironment = this.getDefaultEnvironment();
-      this.setDefaultEnvironment(new Environment({
-        ...oldEnvironment.options,
-        webGpuDevice: device
-      }));
-    }
-    getWebGpuDevice() {
-      return this.getDefaultEnvironment().webGpuDevice;
-    }
-    /**
-     * Registers an object to be deleted when this LiteRt instance is deleted.
-     * Internal use only.
-     */
-    _registerObjectForDeletion(object) {
-      this.objectsToDelete.add(object);
-    }
-    /**
-     * Unregisters an object from being deleted when this LiteRt instance is
-     * deleted. Internal use only.
-     */
-    _unregisterObjectForDeletion(object) {
-      this.objectsToDelete.delete(object);
-    }
-    /**
-     * Loads and compiles a LiteRt model.
-     *
-     * @param model The model data. This can be a string (the model url), a URL
-     *     object, a Uint8Array (the model bytes), or a
-     *     ReadableStreamDefaultReader (for streaming model loading).
-     * @param compileOptions The options for compiling the model. This includes
-     *     the accelerator to use ('webgpu' or 'wasm') and the WebGPU device
-     *     (for direct GPU model inputs / outputs).
-     * @returns A promise that resolves to the CompiledModel.
-     */
-    async loadAndCompile(model, compileOptions = {}) {
-      let modelData;
-      if (typeof model === "string" || model instanceof URL) {
-        modelData = await urlToUint8Array(model);
-      } else if (model instanceof Uint8Array) {
-        modelData = model;
-      } else if (model instanceof ReadableStreamDefaultReader) {
-        modelData = await readableStreamDefaultReaderToUint8Array(model);
-      } else {
-        throw new Error("Unsupported model type.");
-      }
-      const environment = compileOptions.environment ?? this.getDefaultEnvironment();
-      const accelerator = compileOptions.accelerator ?? (environment.webGpuDevice ? "webgpu" : "wasm");
-      const isWebGpu = accelerator === "webgpu";
-      if (isWebGpu && !environment.webGpuDevice) {
-        throw new Error(
-          "WebGPU was requested but no WebGPU device is set in the environment."
-        );
-      }
-      const filledCompileOptions = fillCompileOptions(
-        compileOptions,
-        environment,
-        this.liteRtWasm.getThreadCount()
-      );
-      const ptr = this.liteRtWasm._malloc(modelData.byteLength) >>> 0;
-      if (ptr === 0) {
-        throw new Error(
-          `Failed to allocate ${modelData.byteLength} bytes of Wasm memory for the model.`
-        );
-      }
-      this.liteRtWasm.HEAPU8.set(modelData, ptr);
-      const wasmModel = this.liteRtWasm.loadModel(
-        filledCompileOptions.environment.liteRtEnvironment,
-        ptr,
-        modelData.byteLength
-      );
-      const wasmCompiledModel = await this.liteRtWasm.compileModel(
-        filledCompileOptions.environment.liteRtEnvironment,
-        wasmModel,
-        filledCompileOptions
-      );
-      const loadedModel = new Model(wasmModel, () => {
-        this.liteRtWasm._free(ptr);
-      });
-      const compiledModel = new CompiledModel(
-        loadedModel,
-        wasmCompiledModel,
-        filledCompileOptions,
-        () => {
-          this.objectsToDelete.delete(compiledModel);
-        }
-      );
-      this.objectsToDelete.add(compiledModel);
-      const isWebNn = accelerator === "webnn";
-      const acceleratorRequested = isWebGpu || isWebNn;
-      if (acceleratorRequested && !compiledModel.isFullyAccelerated) {
-        if (isJspiSupported()) {
-          console.warn(
-            `%c[LiteRT]%c Model not fully compiled for ${accelerator}. Partially delegating to WASM execution.`,
-            "background: #FFA000; color: black; font-weight: bold; padding: 2px 5px; border-radius: 3px;",
-            "font-weight: bold;"
-          );
-        } else {
-          console.warn(
-            `%c[LiteRT]%c Model not fully compiled for ${accelerator} on non-JSPI browser. Falling back to WASM execution.`,
-            "background: #D32F2F; color: white; font-weight: bold; padding: 2px 5px; border-radius: 3px;",
-            "color: #D32F2F; font-weight: bold;"
-          );
-          compiledModel.delete();
-          const fallbackCompileOptions = {
-            ...compileOptions,
-            accelerator: "wasm"
-          };
-          return this.loadAndCompile(modelData, fallbackCompileOptions);
-        }
-      }
-      return compiledModel;
-    }
-    /**
-     * Authors a tensor arithmetic function into an AuthoredModel.
-     */
-    author(fn, compileOptions = {}) {
-      const environment = compileOptions.environment ?? this.getDefaultEnvironment();
-      const model = new AuthoredModel(fn, { ...compileOptions, environment });
-      this.objectsToDelete.add(model);
-      return model;
-    }
-    delete() {
-      for (const object of this.objectsToDelete) {
-        object.delete();
-      }
-    }
-  };
-  function pathToString(path) {
-    return path;
-  }
-  function appendPathSegment(path, segment) {
-    if (!path) return segment;
-    if (!segment) return path;
-    const pathWithSlash = path.endsWith("/") ? path : path + "/";
-    const segmentWithoutSlash = segment.startsWith("/") ? segment.substring(1) : segment;
-    return pathWithSlash + segmentWithoutSlash;
-  }
   var WASM_JS_FILE_NAME = "litert_wasm_internal.js";
   var WASM_JS_COMPAT_FILE_NAME = "litert_wasm_compat_internal.js";
   var WASM_JS_THREADED_FILE_NAME = "litert_wasm_threaded_internal.js";
@@ -1927,48 +1327,47 @@
     }));
     return getGlobalLiteRtPromise();
   }
-  var compilationLock = Promise.resolve();
   async function copyHostMemoryToHostMemory(cpuTensor, options = {}) {
     const environment = options.environment ?? cpuTensor.environment;
     const liteRtWasm = getGlobalLiteRt().liteRtWasm;
-    const srcTensorHandle = cpuTensor.liteRtTensorHandle;
-    const bufferType = srcTensorHandle.bufferType();
+    const srcTensorBuffer = cpuTensor.liteRtTensorBuffer;
+    const bufferType = srcTensorBuffer.bufferType();
     if (bufferType.value !== TensorBufferType.HOST_MEMORY) {
       throw new Error(
         "Source tensor is not in host memory. Cannot copy to host memory."
       );
     }
-    const srcTensorMemoryPtr = srcTensorHandle.lock(
+    const srcTensorMemoryPtr = srcTensorBuffer.lock(
       liteRtWasm.LiteRtTensorBufferLockMode.READ
     );
-    let destTensorHandle;
+    let destTensorBuffer;
     try {
-      destTensorHandle = liteRtWasm.LiteRtTensorHandle.createManaged(
+      destTensorBuffer = liteRtWasm.LiteRtTensorBuffer.createManaged(
         environment.liteRtEnvironment,
         liteRtWasm.LiteRtTensorBufferType.HOST_MEMORY,
-        srcTensorHandle.tensorType(),
-        srcTensorHandle.size()
+        srcTensorBuffer.tensorType(),
+        srcTensorBuffer.size()
       );
-      const destMemoryPointer = destTensorHandle.lock(
+      const destMemoryPointer = destTensorBuffer.lock(
         liteRtWasm.LiteRtTensorBufferLockMode.WRITE
       );
       try {
         const srcTensorMemoryView = new Uint8Array(
           liteRtWasm.HEAPU8.buffer,
           srcTensorMemoryPtr,
-          srcTensorHandle.size()
+          srcTensorBuffer.size()
         );
         liteRtWasm.HEAPU8.set(srcTensorMemoryView, destMemoryPointer);
       } finally {
-        destTensorHandle.unlock();
+        destTensorBuffer.unlock();
       }
     } finally {
-      srcTensorHandle.unlock();
+      srcTensorBuffer.unlock();
     }
-    if (!destTensorHandle) {
-      throw new Error("Failed to create destination tensor handle.");
+    if (!destTensorBuffer) {
+      throw new Error("Failed to create destination tensor buffer.");
     }
-    return new Tensor(destTensorHandle, environment);
+    return new Tensor(destTensorBuffer, environment);
   }
   async function cpuTensorToGpuTensor(cpuTensor, options = {}) {
     const environment = options.environment ?? cpuTensor.environment;
@@ -1979,7 +1378,7 @@
       );
     }
     const liteRtWasm = getGlobalLiteRt().liteRtWasm;
-    const byteLength = cpuTensor.liteRtTensorHandle.size();
+    const byteLength = cpuTensor.liteRtTensorBuffer.size();
     const paddedByteLength = byteLength + 3 & ~3;
     const stagingBuffer = device.createBuffer({
       size: paddedByteLength,
@@ -1988,18 +1387,18 @@
     });
     const mappedBuffer = await stagingBuffer.getMappedRange();
     const mappedArray = new Uint8Array(mappedBuffer);
-    const cpuMemoryPtr = cpuTensor.liteRtTensorHandle.lock(
+    const cpuMemoryPtr = cpuTensor.liteRtTensorBuffer.lock(
       liteRtWasm.LiteRtTensorBufferLockMode.READ
     );
     try {
       const cpuMemoryView = new Uint8Array(
         liteRtWasm.HEAPU8.buffer,
         cpuMemoryPtr,
-        cpuTensor.liteRtTensorHandle.size()
+        cpuTensor.liteRtTensorBuffer.size()
       );
       mappedArray.set(cpuMemoryView);
     } finally {
-      cpuTensor.liteRtTensorHandle.unlock();
+      cpuTensor.liteRtTensorBuffer.unlock();
     }
     stagingBuffer.unmap();
     const buffer = device.createBuffer({
@@ -2035,27 +1434,21 @@
       );
     }
     const liteRtWasm = getGlobalLiteRt().liteRtWasm;
-    const tensorHandle = gpuTensor.liteRtTensorHandle;
-    const bufferType = tensorHandle.bufferType();
+    const tensorBuffer = gpuTensor.liteRtTensorBuffer;
+    const bufferType = tensorBuffer.bufferType();
     if (bufferType !== liteRtWasm.LiteRtTensorBufferType.WEB_GPU_BUFFER_PACKED) {
       throw new Error(`Cannot convert a tensor with a non-WebGPU buffer type ${bufferType} to a CPU tensor.`);
     }
     const gpuBuffer = liteRtWasm.WebGPU.getJsObject(
-      tensorHandle.getWebGpuBuffer()
+      tensorBuffer.getWebGpuBuffer()
     );
-    const byteOffset = tensorHandle.offset();
-    const tensorType = tensorHandle.tensorType();
+    const byteOffset = tensorBuffer.offset();
+    const tensorType = tensorBuffer.tensorType();
     const layout = tensorType.layout();
     const numElements = layout.numElements();
-    const elementTypeVal = tensorType.elementType().value;
-    const arrayConstructor = getDataType(elementTypeVal).typedArrayConstructor;
+    const arrayConstructor = getDataType(tensorType.elementType().value).typedArrayConstructor;
     layout.delete();
     tensorType.delete();
-    if (arrayConstructor === void 0) {
-      throw new Error(
-        `DType ${ElementTypeName[elementTypeVal]} is not supported in this environment (missing TypedArray constructor).`
-      );
-    }
     let mappableBuffer = gpuBuffer;
     let cleanupBuffer = () => {
     };
@@ -2093,11 +1486,13 @@
     };
   }
   function registerCopyFunctions() {
-    const hostMemoryDests = /* @__PURE__ */ new Map([
+    Tensor.copyFunctions.set(TensorBufferType.HOST_MEMORY, /* @__PURE__ */ new Map([
       [
         TensorBufferType.HOST_MEMORY,
         {
           copyTo: copyHostMemoryToHostMemory,
+          // There might be a more efficient way to move
+          // from CPU to CPU.
           moveTo: makeMoveTo(copyHostMemoryToHostMemory)
         }
       ],
@@ -2108,9 +1503,8 @@
           moveTo: makeMoveTo(cpuTensorToGpuTensor)
         }
       ]
-    ]);
-    Tensor.copyFunctions.set(TensorBufferType.HOST_MEMORY, hostMemoryDests);
-    const webGpuDests = /* @__PURE__ */ new Map([
+    ]));
+    Tensor.copyFunctions.set(TensorBufferType.WEB_GPU_BUFFER_PACKED, /* @__PURE__ */ new Map([
       [
         TensorBufferType.HOST_MEMORY,
         {
@@ -2118,8 +1512,7 @@
           moveTo: makeMoveTo(gpuTensorToCpuTensor)
         }
       ]
-    ]);
-    Tensor.copyFunctions.set(TensorBufferType.WEB_GPU_BUFFER_PACKED, webGpuDests);
+    ]));
   }
   registerCopyFunctions();
 
