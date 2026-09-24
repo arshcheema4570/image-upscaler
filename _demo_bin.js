@@ -2400,6 +2400,7 @@
       this.progressValue = 0;
       this.originalImage = null;
       this.originalSrc = "";
+      this.originalFileName = "image";
       this.upscaledCanvas = null;
       this.isUpscaling = false;
       this.sliderValue = 50;
@@ -2534,6 +2535,7 @@
         this.statusMessage = "Please select an image file.";
         return;
       }
+      this.originalFileName = file.name.replace(/\.[^.]+$/, "") || "image";
       const reader = new FileReader();
       reader.onload = (e5) => {
         const img = new Image();
@@ -2598,13 +2600,33 @@
           }
         });
         this.upscaledCanvas = resultCanvas;
-        this.statusMessage = "Upscaling complete!";
+        this.statusMessage = "Upscaling complete! Downloading\u2026";
+        this.downloadUpscaledImage(resultCanvas);
       } catch (e5) {
         this.statusMessage = `Error during upscaling: ${e5.message}`;
         console.error(e5);
       } finally {
         this.isUpscaling = false;
       }
+    }
+    /** Auto-downloads the upscaled result as a PNG file. */
+    downloadUpscaledImage(canvas) {
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          this.statusMessage = "Upscaling complete! (Could not start download.)";
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${this.originalFileName}-4x.png`;
+        link.target = "_blank";
+        link.rel = "noopener";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 6e4);
+      }, "image/png");
     }
     render() {
       const currentModel = this.models[this.selectedModelName];
@@ -2674,6 +2696,9 @@
   __decorateClass([
     r5()
   ], ImageUpscaler.prototype, "originalSrc", 2);
+  __decorateClass([
+    r5()
+  ], ImageUpscaler.prototype, "originalFileName", 2);
   __decorateClass([
     r5()
   ], ImageUpscaler.prototype, "upscaledCanvas", 2);
