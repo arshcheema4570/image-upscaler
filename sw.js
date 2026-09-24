@@ -1,12 +1,10 @@
 /* Image Upscaler PWA service worker.
- * - Install: cache-first app shell (relative URLs resolve under the SW scope,
- *   so this works at any subpath, e.g. GitHub Pages project sites).
- * - Runtime: cache-first for the same-origin LiteRT wasm runtime and for the
- *   HuggingFace .tflite model. HuggingFace serves CORS-enabled responses, so
- *   the cached model stays readable by loadAndCompile(). Opaque responses are
- *   also cached defensively.
+ * - Install: cache-first app shell + the bundled Real-ESRGAN .tflite model
+ *   (relative URLs resolve under the SW scope, so this works at any subpath,
+ *   e.g. GitHub Pages project sites).
+ * - Runtime: cache-first for same-origin requests (LiteRT wasm runtime).
  */
-const VERSION = 'upscaler-v1';
+const VERSION = 'upscaler-v2';
 
 const APP_SHELL = [
   './',
@@ -16,12 +14,10 @@ const APP_SHELL = [
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  // Real-ESRGAN x4plus model, bundled same-origin (fixes HuggingFace CORS
+  // redirect issues and makes the app fully offline-capable after install).
+  './models/Real-ESRGAN-x4plus_float.tflite',
 ];
-
-// Real-ESRGAN x4plus .tflite fetched at runtime by LiteRT.js (tens of MB).
-// Deliberately NOT bundled in git; cached here after first download.
-const MODEL_URL =
-  'https://huggingface.co/qualcomm/Real-ESRGAN-x4plus/resolve/v0.37.0/Real-ESRGAN-x4plus_float.tflite';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -46,15 +42,13 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
-  const isSameOrigin = url.origin === self.location.origin;
-  const isModel = request.url === MODEL_URL;
-  if (!isSameOrigin && !isModel) return; // leave anything else to the network
+  if (url.origin !== self.location.origin) return; // same-origin only
 
   event.respondWith(
     caches.match(request).then((hit) => {
       if (hit) return hit;
       return fetch(request).then((res) => {
-        if (res && (res.status === 200 || res.type === 'opaque')) {
+        if (res && res.status === 200) {
           const copy = res.clone();
           caches.open(VERSION).then((cache) => cache.put(request, copy));
         }

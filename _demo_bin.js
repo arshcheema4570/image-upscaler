@@ -2987,7 +2987,7 @@
   // src/image_upscaler.ts
   var MODELS = {
     "Real-ESRGAN x4plus": {
-      url: "https://huggingface.co/qualcomm/Real-ESRGAN-x4plus/resolve/v0.37.0/Real-ESRGAN-x4plus_float.tflite",
+      url: "./models/Real-ESRGAN-x4plus_float.tflite",
       licenseHtml: x`
       <div class="license-info">
         <a href="https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE" target="_blank">Model License</a>
@@ -3068,17 +3068,23 @@
     async loadModel(name) {
       if (this.models[name]) return;
       this.models = { ...this.models, [name]: null };
-      this.statusMessage = `Downloading & compiling ${name}...`;
-      try {
-        const accelerator = isWebGPUSupported() ? "webgpu" : "wasm";
-        const modelInfo = MODELS[name];
-        const model = await loadAndCompile(modelInfo.url, { accelerator });
-        this.models = { ...this.models, [name]: model };
-        this.statusMessage = "Ready. Please select an image.";
-      } catch (e5) {
-        this.statusMessage = `Error loading model: ${e5.message}`;
-        console.error(e5);
+      const modelInfo = MODELS[name];
+      const accelerators = isWebGPUSupported() ? ["webgpu", "wasm"] : ["wasm"];
+      let lastError = null;
+      for (const accelerator of accelerators) {
+        this.statusMessage = accelerator === "webgpu" ? `Downloading & compiling ${name} (GPU)...` : lastError ? `WebGPU unavailable, falling back to CPU mode...` : `Downloading & compiling ${name} (CPU)...`;
+        try {
+          const model = await loadAndCompile(modelInfo.url, { accelerator });
+          this.models = { ...this.models, [name]: model };
+          this.statusMessage = accelerator === "webgpu" ? "Ready. Please select an image." : "Ready (CPU mode \u2014 upscaling will be slower). Please select an image.";
+          return;
+        } catch (e5) {
+          lastError = e5;
+          console.error(`Failed to compile model with ${accelerator}:`, e5);
+        }
       }
+      this.statusMessage = `Error loading model: ${lastError.message}`;
+      console.error(lastError);
     }
     handleFileSelect(file) {
       if (!file.type.startsWith("image/")) {
