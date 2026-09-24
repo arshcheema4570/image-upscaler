@@ -2470,7 +2470,9 @@
       for (const accelerator of accelerators) {
         this.statusMessage = accelerator === "webgpu" ? `Downloading & compiling ${name} (GPU)...` : lastError ? `WebGPU unavailable, falling back to CPU mode...` : `Downloading & compiling ${name} (CPU)...`;
         try {
-          const model = await loadAndCompile(modelInfo.url, { accelerator });
+          const modelData = await this.downloadModel(modelInfo.url);
+          this.statusMessage = `Compiling ${name}...`;
+          const model = await loadAndCompile(modelData, { accelerator });
           this.models = { ...this.models, [name]: model };
           this.modelAccelerators = { ...this.modelAccelerators, [name]: accelerator };
           this.statusMessage = accelerator === "webgpu" ? "Ready. Please select an image." : "Ready (CPU mode \u2014 upscaling will be slower). Please select an image.";
@@ -2482,6 +2484,50 @@
       }
       this.statusMessage = `Error loading model: ${lastError.message}`;
       console.error(lastError);
+    }
+    /**
+     * Downloads the .tflite model with a progress readout and retries.
+     * Throws an actionable error if the download keeps failing.
+     */
+    async downloadModel(url) {
+      const maxAttempts = 3;
+      let lastError = null;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const res = await fetch(url);
+          if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+          const total = Number(res.headers.get("content-length")) || 0;
+          const reader = res.body.getReader();
+          const chunks = [];
+          let received = 0;
+          for (; ; ) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            received += value.length;
+            if (total > 0) {
+              this.statusMessage = `Downloading model\u2026 ${Math.round(received / total * 100)}%` + (attempt > 1 ? ` (attempt ${attempt}/${maxAttempts})` : "");
+            }
+          }
+          const data = new Uint8Array(received);
+          let offset = 0;
+          for (const c4 of chunks) {
+            data.set(c4, offset);
+            offset += c4.length;
+          }
+          return data;
+        } catch (e5) {
+          lastError = e5;
+          console.warn(`Model download attempt ${attempt}/${maxAttempts} failed:`, e5);
+          if (attempt < maxAttempts) {
+            this.statusMessage = `Model download interrupted \u2014 retrying (${attempt + 1}/${maxAttempts})\u2026`;
+            await new Promise((r6) => setTimeout(r6, 1500));
+          }
+        }
+      }
+      throw new Error(
+        `Could not download the 67 MB model file (${lastError?.message ?? lastError}). Connect to Wi-Fi and reload to retry.`
+      );
     }
     handleFileSelect(file) {
       if (!file.type.startsWith("image/")) {
