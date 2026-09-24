@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<!--
+ Copyright 2025 Google LLC
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Image Upscaler</title>
+  <meta name="description" content="Upscale images 4x with Real-ESRGAN, fully on-device via LiteRT.js. No uploads, works offline.">
+  <meta name="theme-color" content="#0b1020">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Upscaler">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20512%20512'%3E%3Crect%20width='512'%20height='512'%20rx='112'%20fill='%230b1020'/%3E%3Cg%20fill='none'%20stroke='%2338bdf8'%20stroke-width='48'%20stroke-linecap='round'%3E%3Cpath%20d='M190%2096H96V190'/%3E%3Cpath%20d='M322%2096h94v94'/%3E%3Cpath%20d='M190%20416H96V322'/%3E%3Cpath%20d='M322%20416h94v-94'/%3E%3C/g%3E%3Crect%20x='241'%20y='241'%20width='34'%20height='34'%20rx='6'%20fill='%23fbbf24'/%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <style>
+    body {
+      margin: 0;
+      background-color: #fff;
+    }
+  </style>
+  <script src="./_demo_bin.js" defer></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch((e) =>
+          console.warn('SW registration failed:', e));
+      });
+    }
+  </script>
+</head>
+<body>
+  <image-upscaler></image-upscaler>
+</body>
+</html>
