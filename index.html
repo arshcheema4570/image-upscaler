@@ -34,12 +34,18 @@
       background-color: #fff;
     }
   </style>
-  <script src="./_demo_bin.js" defer></script>
+  <script src="./_demo_bin.js?v=5" defer></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js').catch((e) =>
           console.warn('SW registration failed:', e));
+      });
+      // When an updated service worker takes control, reload once so the
+      // page runs the fresh JS bundle instead of a stale cached copy.
+      const hadController = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (hadController) window.location.reload();
       });
     }
   </script>

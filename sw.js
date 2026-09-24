@@ -4,12 +4,12 @@
  *   e.g. GitHub Pages project sites).
  * - Runtime: cache-first for same-origin requests (LiteRT wasm runtime).
  */
-const VERSION = 'upscaler-v4';
+const VERSION = 'upscaler-v5';
 
 const APP_SHELL = [
   './',
   './index.html',
-  './_demo_bin.js',
+  './_demo_bin.js?v=5',
   './manifest.json',
   './icons/icon.svg',
   './icons/icon-192.png',
@@ -22,7 +22,13 @@ const APP_SHELL = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(VERSION)
-      .then((cache) => cache.addAll(APP_SHELL))
+      // cache:'reload' bypasses the HTTP cache so updates never install
+      // a stale copy of a file that changed on the server.
+      .then((cache) =>
+        Promise.all(
+          APP_SHELL.map((url) => cache.add(new Request(url, { cache: 'reload' })))
+        )
+      )
       .then(() => self.skipWaiting())
   );
 });
