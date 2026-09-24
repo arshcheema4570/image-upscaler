@@ -4,7 +4,7 @@
  *   e.g. GitHub Pages project sites).
  * - Runtime: cache-first for same-origin requests (LiteRT wasm runtime).
  */
-const VERSION = 'upscaler-v2';
+const VERSION = 'upscaler-v3';
 
 const APP_SHELL = [
   './',

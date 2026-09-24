@@ -2886,6 +2886,7 @@
   async function upscaleImageWithTiling({
     sourceImage,
     model,
+    accelerator,
     overlapPercent,
     normalizationRange,
     progressCallback
@@ -2956,10 +2957,10 @@
           }
         }
         const cpuInputTensor = new Tensor(tileData, [1, inputHeight, inputWidth, 3]);
-        const gpuInputTensor = await cpuInputTensor.moveTo("webgpu");
-        const [outputTensor] = await model.run([gpuInputTensor]);
-        gpuInputTensor.delete();
-        const outputCpu = await outputTensor.moveTo("wasm");
+        const inputTensor = accelerator === "webgpu" ? await cpuInputTensor.moveTo("webgpu") : cpuInputTensor;
+        const [outputTensor] = await model.run([inputTensor]);
+        inputTensor.delete();
+        const outputCpu = accelerator === "webgpu" ? await outputTensor.moveTo("wasm") : outputTensor;
         const outputData = outputCpu.toTypedArray();
         outputCpu.delete();
         const destStartX = Math.round(startX * scale);
@@ -3016,6 +3017,8 @@
       this.models = {};
       this.selectedModelName = Object.keys(MODELS)[0];
       this.overlapPercent = 20;
+      // Which accelerator each compiled model uses ('webgpu' or 'wasm').
+      this.modelAccelerators = {};
       this.handleDragMove = (e5) => {
         if (!this.isDraggingSlider || !this.comparisonContainerRect) {
           return;
@@ -3076,6 +3079,7 @@
         try {
           const model = await loadAndCompile(modelInfo.url, { accelerator });
           this.models = { ...this.models, [name]: model };
+          this.modelAccelerators = { ...this.modelAccelerators, [name]: accelerator };
           this.statusMessage = accelerator === "webgpu" ? "Ready. Please select an image." : "Ready (CPU mode \u2014 upscaling will be slower). Please select an image.";
           return;
         } catch (e5) {
@@ -3146,6 +3150,7 @@
         const resultCanvas = await upscaleImageWithTiling({
           sourceImage: this.originalImage,
           model,
+          accelerator: this.modelAccelerators[this.selectedModelName] ?? "wasm",
           overlapPercent: this.overlapPercent,
           normalizationRange: modelInfo.range,
           progressCallback: ({ message, value }) => {
