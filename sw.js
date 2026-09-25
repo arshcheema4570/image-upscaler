@@ -9,13 +9,13 @@
  *   missing files on demand.
  * - Runtime: cache-first for same-origin requests (LiteRT wasm runtime).
  */
-const VERSION = 'upscaler-v8';
+const VERSION = 'upscaler-v9';
 const MODEL_PATH = './models/Real-ESRGAN-x4plus_float.tflite';
 
 const APP_SHELL = [
   './',
   './index.html',
-  './_demo_bin.js?v=8',
+  './_demo_bin.js?v=9',
   './manifest.json',
   './icons/icon.svg',
   './icons/icon-192.png',
