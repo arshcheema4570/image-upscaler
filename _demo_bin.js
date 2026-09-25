@@ -2413,6 +2413,7 @@
       this.overlapPercent = 10;
       // Which accelerator each compiled model uses ('webgpu' or 'wasm').
       this.modelAccelerators = {};
+      this.acceleratorPref = "auto";
       this.handleDragMove = (e5) => {
         if (!this.isDraggingSlider || !this.comparisonContainerRect) {
           return;
@@ -2466,7 +2467,7 @@
       if (this.models[name]) return;
       this.models = { ...this.models, [name]: null };
       const modelInfo = MODELS[name];
-      const accelerators = isWebGPUSupported() ? ["webgpu", "wasm"] : ["wasm"];
+      const accelerators = this.acceleratorPref === "webgpu" ? ["webgpu"] : this.acceleratorPref === "wasm" ? ["wasm"] : isWebGPUSupported() ? ["webgpu", "wasm"] : ["wasm"];
       let lastError = null;
       for (const accelerator of accelerators) {
         this.statusMessage = accelerator === "webgpu" ? `Downloading & compiling ${name} (GPU)...` : lastError ? `WebGPU unavailable, falling back to CPU mode...` : `Downloading & compiling ${name} (CPU)...`;
@@ -2561,6 +2562,11 @@
       this.selectedModelName = e5.target.value;
       this.loadModel(this.selectedModelName);
     }
+    onAcceleratorChange(e5) {
+      this.acceleratorPref = e5.target.value;
+      this.models = { ...this.models, [this.selectedModelName]: null };
+      this.loadModel(this.selectedModelName);
+    }
     renderComparison() {
       return x`
       <div class="comparison-container"
@@ -2644,6 +2650,16 @@
             ${MODELS[this.selectedModelName]?.licenseHtml ?? ""}
           </div>
           <div class="control-group">
+            <label for="accelerator-select">Processor:</label>
+            <select id="accelerator-select" @change=${this.onAcceleratorChange}>
+              <option value="auto">Auto (GPU if available)</option>
+              <option value="webgpu" .disabled=${!isWebGPUSupported()}>
+                GPU (WebGPU)
+              </option>
+              <option value="wasm">CPU</option>
+            </select>
+          </div>
+          <div class="control-group">
             <label for="overlap-slider">Tile Overlap: ${this.overlapPercent}%</label>
             <input
               type="range"
@@ -2723,6 +2739,9 @@
   __decorateClass([
     r5()
   ], ImageUpscaler.prototype, "overlapPercent", 2);
+  __decorateClass([
+    r5()
+  ], ImageUpscaler.prototype, "acceleratorPref", 2);
   ImageUpscaler = __decorateClass([
     t3("image-upscaler")
   ], ImageUpscaler);
