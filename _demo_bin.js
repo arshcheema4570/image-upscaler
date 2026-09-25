@@ -2470,16 +2470,14 @@
       let lastError = null;
       try {
         const modelData = await this.downloadModel(modelInfo.url);
-        const accelerators = await this.resolveAccelerators(modelData);
+        const accelerators = this.acceleratorPref === "webgpu" ? ["webgpu"] : this.acceleratorPref === "wasm" ? ["wasm"] : isWebGPUSupported() ? ["webgpu", "wasm"] : ["wasm"];
         for (const accelerator of accelerators) {
           this.statusMessage = accelerator === "wasm" && lastError ? "WebGPU failed, falling back to CPU\u2026" : `Compiling ${name} (${accelerator === "webgpu" ? "GPU" : "CPU"})\u2026`;
           try {
             const model = await loadAndCompile(modelData, { accelerator });
             this.models = { ...this.models, [name]: model };
             this.modelAccelerators = { ...this.modelAccelerators, [name]: accelerator };
-            const autoPicked = this.acceleratorPref === "auto" && isWebGPUSupported();
-            const tag = autoPicked ? " \u2014 benchmarked fastest on this device" : "";
-            this.statusMessage = accelerator === "webgpu" ? `Ready (GPU mode${tag}). Please select an image.` : `Ready (CPU mode${tag}). Please select an image.`;
+            this.statusMessage = accelerator === "webgpu" ? "Ready. Please select an image." : "Ready (CPU mode \u2014 upscaling will be slower). Please select an image.";
             return;
           } catch (e5) {
             lastError = e5;
@@ -2491,85 +2489,6 @@
         console.error(e5);
       }
       this.statusMessage = `Error loading model: ${lastError.message}`;
-    }
-    /**
-     * Ordered accelerator list to try. A manual preference pins one
-     * accelerator; 'auto' benchmarks GPU vs CPU once per device (the winner is
-     * cached) and tries the winner first.
-     */
-    async resolveAccelerators(modelData) {
-      if (this.acceleratorPref === "webgpu") return ["webgpu"];
-      if (this.acceleratorPref === "wasm") return ["wasm"];
-      if (!isWebGPUSupported()) return ["wasm"];
-      const cached = this.readCachedAccelerator();
-      if (cached) return [cached];
-      const ranked = await this.benchmarkAccelerators(modelData);
-      if (ranked.length > 0) {
-        this.writeCachedAccelerator(ranked[0]);
-        return ranked;
-      }
-      return ["wasm"];
-    }
-    /**
-     * Compiles the model on each accelerator and times real tile inferences,
-     * returning accelerators ordered fastest-first. An accelerator that fails
-     * to compile or run is excluded.
-     */
-    async benchmarkAccelerators(modelData) {
-      const timed = [];
-      for (const accel of ["webgpu", "wasm"]) {
-        try {
-          this.statusMessage = `Benchmarking ${accel === "webgpu" ? "GPU" : "CPU"} speed\u2026`;
-          const model = await loadAndCompile(modelData, { accelerator: accel });
-          const msPerTile = await this.timeInferenceTiles(model, accel);
-          console.log(`Benchmark: ${accel} = ${msPerTile.toFixed(1)} ms/tile`);
-          timed.push({ accel, msPerTile });
-        } catch (e5) {
-          console.error(`Benchmark failed on ${accel}:`, e5);
-        }
-      }
-      timed.sort((a3, b3) => a3.msPerTile - b3.msPerTile);
-      return timed.map((t4) => t4.accel);
-    }
-    /**
-     * Times full tile inferences (including host/device transfers, exactly as
-     * the real upscaling loop does) on random input data.
-     */
-    async timeInferenceTiles(model, accelerator) {
-      const inputDetails = model.getInputDetails()[0];
-      const [, inputHeight, inputWidth] = inputDetails.shape;
-      const shape = [1, inputHeight, inputWidth, 3];
-      const tileData = new Float32Array(inputHeight * inputWidth * 3);
-      for (let i5 = 0; i5 < tileData.length; i5++) tileData[i5] = Math.random();
-      const runTile = async () => {
-        const cpuTensor = new Tensor(tileData, shape);
-        const inputTensor = accelerator === "webgpu" ? await cpuTensor.moveTo("webgpu") : cpuTensor;
-        const [outputTensor] = await model.run([inputTensor]);
-        inputTensor.delete();
-        const outputCpu = accelerator === "webgpu" ? await outputTensor.moveTo("wasm") : outputTensor;
-        outputCpu.toTypedArray();
-        outputCpu.delete();
-      };
-      const WARMUP_TILES = 2;
-      const TIMED_TILES = 4;
-      for (let i5 = 0; i5 < WARMUP_TILES; i5++) await runTile();
-      const start = performance.now();
-      for (let i5 = 0; i5 < TIMED_TILES; i5++) await runTile();
-      return (performance.now() - start) / TIMED_TILES;
-    }
-    readCachedAccelerator() {
-      try {
-        const v2 = localStorage.getItem("upscaler-auto-accel-v1");
-        return v2 === "webgpu" || v2 === "wasm" ? v2 : null;
-      } catch {
-        return null;
-      }
-    }
-    writeCachedAccelerator(accel) {
-      try {
-        localStorage.setItem("upscaler-auto-accel-v1", accel);
-      } catch {
-      }
     }
     /**
      * Downloads the .tflite model with a progress readout and retries.
@@ -2736,7 +2655,7 @@
           <div class="control-group">
             <label for="accelerator-select">Processor:</label>
             <select id="accelerator-select" @change=${this.onAcceleratorChange}>
-              <option value="auto">Auto (benchmark fastest)</option>
+              <option value="auto">Auto (GPU if available)</option>
               <option value="webgpu" .disabled=${!isWebGPUSupported()}>
                 GPU (WebGPU)
               </option>
