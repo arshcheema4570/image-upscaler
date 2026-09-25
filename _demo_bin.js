@@ -2410,7 +2410,7 @@
       this.dragStartX = null;
       this.models = {};
       this.selectedModelName = Object.keys(MODELS)[0];
-      this.overlapPercent = 20;
+      this.overlapPercent = 5;
       // Which accelerator each compiled model uses ('webgpu' or 'wasm').
       this.modelAccelerators = {};
       this.handleDragMove = (e5) => {
