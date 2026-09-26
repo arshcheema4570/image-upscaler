@@ -2125,7 +2125,7 @@
     align-items: center;
   }
   h1 {
-    color: #1a73e8;
+    color: #274c77;
     margin-bottom: 0;
   }
   .controls {
@@ -2133,7 +2133,7 @@
     flex-wrap: wrap;
     gap: 1.5rem;
     padding: 1rem;
-    background: #f1f3f4;
+    background: #eaf1f6;
     border-radius: 8px;
     width: 100%;
     box-sizing: border-box;
@@ -2147,23 +2147,23 @@
   }
   label {
     font-size: 0.8rem;
-    color: #5f6368;
+    color: #5a6b7c;
   }
   select, button {
     padding: 0.5rem 1rem;
     border-radius: 4px;
-    border: 1px solid #dadce0;
+    border: 1px solid #cbd9e3;
     font-size: 1rem;
     cursor: pointer;
   }
   button {
-    background: #1a73e8;
+    background: #274c77;
     color: white;
     border: none;
     font-weight: 500;
   }
   button:disabled {
-    background: #e0e0e0;
+    background: #dbe5ec;
     cursor: not-allowed;
   }
   input[type="range"] {
@@ -2172,7 +2172,7 @@
   .drop-zone {
     width: 100%;
     min-height: 300px;
-    border: 2px dashed #dadce0;
+    border: 2px dashed #cbd9e3;
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -2182,11 +2182,11 @@
     overflow: hidden;
   }
   .drop-zone:hover {
-    background-color: #f8f9fa;
-    border-color: #1a73e8;
+    background-color: #f5f9fc;
+    border-color: #274c77;
   }
   .drop-zone p {
-    color: #5f6368;
+    color: #5a6b7c;
     text-align: center;
   }
   .drop-zone img,
@@ -2201,19 +2201,19 @@
   }
   .status {
     min-height: 1.2em;
-    color: #5f6368;
+    color: #5a6b7c;
   }
   progress {
     width: 100%;
   }
   .license-info {
     font-size: 0.75rem;
-    color: #5f6368;
+    color: #5a6b7c;
     margin-top: 0.5rem;
     text-align: center;
   }
   .license-info a {
-    color: #1a73e8;
+    color: #274c77;
     text-decoration: none;
   }
   .license-info a:hover {
@@ -2221,7 +2221,7 @@
   }
   .view-original {
     margin-top: 1rem;
-    background-color: #5f6368;
+    background-color: #5a6b7c;
   }
 
   .comparison-container {
@@ -2262,6 +2262,14 @@
     image-rendering: crisp-edges;
   }
 
+  .container { animation: sharedUpscalerRise .65s var(--shared-ease, cubic-bezier(.23,1,.32,1)) both; }
+  .controls, .drop-zone, .comparison-container { box-shadow: 0 18px 50px rgba(31,55,90,.12); transition: transform .22s cubic-bezier(.23,1,.32,1), box-shadow .22s cubic-bezier(.23,1,.32,1), background-color .22s ease, border-color .22s ease; }
+  .controls:hover, .drop-zone:hover, .comparison-container:hover { transform: translateY(-2px); box-shadow: 0 22px 58px rgba(31,55,90,.17); }
+  button { transition: transform .18s cubic-bezier(.23,1,.32,1), box-shadow .18s cubic-bezier(.23,1,.32,1), background-color .18s ease; }
+  button:hover { transform: translateY(-2px); box-shadow: 0 9px 22px rgba(39,76,119,.2); }
+  button:active { transform: translateY(0) scale(.98); }
+  @keyframes sharedUpscalerRise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
   .comparison-slider-bar {
     position: absolute;
     top: 0;

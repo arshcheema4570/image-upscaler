@@ -20,7 +20,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Image Upscaler</title>
   <meta name="description" content="Upscale images 4x with Real-ESRGAN, fully on-device via LiteRT.js. No uploads, works offline.">
-  <meta name="theme-color" content="#0b1020">
+  <meta name="theme-color" content="#274c77">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -33,6 +33,15 @@
       margin: 0;
       background-color: #fff;
     }
+
+    /* Shared Kheti family visual system */
+    :root{--shared-blue:#274c77;--shared-blue-2:#6096ba;--shared-gold:#f2c46d;--shared-ease:cubic-bezier(.23,1,.32,1)}
+    html{scroll-behavior:smooth}
+    body{min-height:100vh;background:linear-gradient(125deg,#edf4f8 0%,#f8fbfd 48%,#fff4dc 100%);background-attachment:fixed;overflow-x:hidden}
+    body:before{content:"";position:fixed;inset:-20%;z-index:0;pointer-events:none;background:radial-gradient(circle at 12% 12%,rgba(96,150,186,.18),transparent 28%),radial-gradient(circle at 88% 18%,rgba(242,196,109,.16),transparent 25%),radial-gradient(circle at 72% 90%,rgba(39,76,119,.12),transparent 30%);filter:blur(12px);animation:sharedDrift 18s ease-in-out infinite alternate}
+    image-upscaler{position:relative;z-index:1}
+    @keyframes sharedDrift{from{transform:translate3d(-1%,0,0) scale(1)}to{transform:translate3d(1.5%,1%,0) scale(1.05)}}
+    @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
   </style>
   <script src="./_demo_bin.js?v=12" defer></script>
   <script>
