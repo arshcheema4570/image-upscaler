@@ -2596,7 +2596,7 @@
     `;
     }
     async handleUpscale() {
-      const model = this.models[this.selectedModelName];
+      let model = this.models[this.selectedModelName];
       const modelInfo = MODELS[this.selectedModelName];
       if (!this.originalImage || !model) {
         this.statusMessage = "Please load an image and wait for the model to compile.";
@@ -2604,18 +2604,34 @@
       }
       this.isUpscaling = true;
       this.upscaledCanvas = null;
+      const runUpscale = () => upscaleImageWithTiling({
+        sourceImage: this.originalImage,
+        model,
+        accelerator: this.modelAccelerators[this.selectedModelName] ?? "wasm",
+        overlapPercent: this.overlapPercent,
+        normalizationRange: modelInfo.range,
+        progressCallback: ({ message, value }) => {
+          this.statusMessage = message;
+          this.progressValue = value;
+        }
+      });
       try {
-        const resultCanvas = await upscaleImageWithTiling({
-          sourceImage: this.originalImage,
-          model,
-          accelerator: this.modelAccelerators[this.selectedModelName] ?? "wasm",
-          overlapPercent: this.overlapPercent,
-          normalizationRange: modelInfo.range,
-          progressCallback: ({ message, value }) => {
-            this.statusMessage = message;
-            this.progressValue = value;
-          }
-        });
+        let resultCanvas;
+        try {
+          resultCanvas = await runUpscale();
+        } catch (e6) {
+          // The GPU path compiled but failed at inference (seen on devices
+          // where WebGPU is advertised yet broken). Fall back to CPU once
+          // and retry instead of surfacing a native binding error.
+          if ((this.modelAccelerators[this.selectedModelName] ?? "wasm") !== "webgpu") throw e6;
+          console.error("WebGPU upscaling failed, falling back to CPU:", e6);
+          this.statusMessage = "WebGPU failed during upscaling, falling back to CPU\u2026";
+          const modelData = await this.downloadModel(modelInfo.url);
+          model = await loadAndCompile(modelData, { accelerator: "wasm" });
+          this.models = { ...this.models, [this.selectedModelName]: model };
+          this.modelAccelerators = { ...this.modelAccelerators, [this.selectedModelName]: "wasm" };
+          resultCanvas = await runUpscale();
+        }
         this.upscaledCanvas = resultCanvas;
         this.statusMessage = "Upscaling complete! Downloading\u2026";
         this.downloadUpscaledImage(resultCanvas);
