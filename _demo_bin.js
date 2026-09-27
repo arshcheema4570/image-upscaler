@@ -2389,13 +2389,25 @@
 
   // src/image_upscaler.ts
   var MODELS = {
-    "Real-ESRGAN x4plus": {
-      url: "./models/Real-ESRGAN-x4plus_float.tflite",
+    "RealESRGAN x2plus": {
+      url: "./models/RealESRGAN-x2plus_float32.tflite",
       licenseHtml: x`
       <div class="license-info">
-        <a href="https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE" target="_blank">Model License</a>
+        <a href="https://huggingface.co/skillsafe-ai/realesrgan-x2plus" target="_blank">Model: RealESRGAN_x2plus (ONNX)</a>
         |
-        <a href="https://huggingface.co/qualcomm/Real-ESRGAN-x4plus/blob/main/DEPLOYMENT_MODEL_LICENSE.pdf" target="_blank">Deployment License</a>
+        <a href="https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE" target="_blank">BSD-3-Clause License</a>
+      </div>
+    `,
+      range: [0, 1]
+      // Normalizes to [0, 1]
+    },
+    "RealESR-General x4v3": {
+      url: "./models/RealESR-General-x4v3_float32.tflite",
+      licenseHtml: x`
+      <div class="license-info">
+        <a href="https://huggingface.co/qualcomm/Real-ESRGAN-General-x4v3" target="_blank">Model: RealESR-General-x4v3 by Qualcomm AI Hub</a>
+        |
+        <a href="https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE" target="_blank">Model License</a>
       </div>
     `,
       range: [0, 1]
@@ -2687,7 +2699,8 @@
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `${this.originalFileName}-4x.png`;
+        const dlScale = Math.round(canvas.width / this.originalImage.naturalWidth) || 4;
+        link.download = `${this.originalFileName}-${dlScale}x.png`;
         link.target = "_blank";
         link.rel = "noopener";
         document.body.appendChild(link);
