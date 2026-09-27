@@ -2400,6 +2400,18 @@
     `,
       range: [0, 1]
       // Normalizes to [0, 1]
+    },
+    "ClearReality-x4": {
+      url: "./models/ClearReality-x4_float32.tflite",
+      licenseHtml: x`
+      <div class="license-info">
+        <a href="https://huggingface.co/Kim2091/ClearRealityV1" target="_blank">Model: ClearReality-x4 by Kim2091</a>
+        |
+        <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank">Apache-2.0 License</a>
+      </div>
+    `,
+      range: [0, 1]
+      // Normalizes to [0, 1]
     }
   };
   var ImageUpscaler = class extends i4 {

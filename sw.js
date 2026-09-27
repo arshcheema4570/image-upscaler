@@ -1,55 +1,62 @@
 /* Image Upscaler PWA service worker.
- * - Install: cache-first app shell + the bundled Real-ESRGAN .tflite model
+ * - Install: cache-first app shell + the bundled .tflite models
  *   (relative URLs resolve under the SW scope, so this works at any subpath,
  *   e.g. GitHub Pages project sites).
- * - The 67MB model is reused from a previous cache version when present, so
+ * - Model files are reused from a previous cache version when present, so
  *   app updates don't re-download it (unreliable on mobile data and it would
  *   otherwise block the whole SW update).
  * - One bad file never fails the entire install; the runtime handler caches
  *   missing files on demand.
  * - Runtime: cache-first for same-origin requests (LiteRT wasm runtime).
  */
-const VERSION = 'upscaler-v16';
-const MODEL_PATH = './models/Real-ESRGAN-x4plus_float.tflite';
+const VERSION = 'upscaler-v17';
+const MODEL_PATHS = [
+  './models/Real-ESRGAN-x4plus_float.tflite',
+  './models/ClearReality-x4_float32.tflite',
+];
 
 const APP_SHELL = [
   './',
   './index.html',
-  './_demo_bin.js?v=12',
+  './_demo_bin.js?v=17',
   './manifest.json',
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
-  // Real-ESRGAN x4plus model, bundled same-origin (fixes HuggingFace CORS
-  // redirect issues and makes the app fully offline-capable after install).
-  MODEL_PATH,
+  // Model files, bundled same-origin (fixes HuggingFace CORS redirect issues
+  // and makes the app fully offline-capable after install).
+  ...MODEL_PATHS,
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(VERSION);
-    const modelURL = new URL(MODEL_PATH, self.location).href;
-    // Reuse the large model file from a previous cache version instead of
-    // re-downloading it on every app update.
+    const modelURLs = MODEL_PATHS.map((p) => new URL(p, self.location).href);
+    // Reuse model files from a previous cache version instead of
+    // re-downloading them on every app update.
+    const reused = new Set();
     try {
       const keys = await caches.keys();
-      for (const k of keys) {
-        if (k === VERSION) continue;
-        const oldCache = await caches.open(k);
-        const hit = await oldCache.match(modelURL);
-        if (hit) {
-          await cache.put(modelURL, hit);
-          break;
+      for (const modelURL of modelURLs) {
+        for (const k of keys) {
+          if (k === VERSION) continue;
+          const oldCache = await caches.open(k);
+          const hit = await oldCache.match(modelURL);
+          if (hit) {
+            await cache.put(modelURL, hit);
+            reused.add(modelURL);
+            break;
+          }
         }
       }
     } catch (e) {
       console.warn('SW: reusing cached model failed:', e);
     }
-    const modelReused = !!(await cache.match(modelURL));
     await Promise.all(
       APP_SHELL.map(async (url) => {
         try {
-          if (url === MODEL_PATH && modelReused) return; // already copied
+          const abs = new URL(url, self.location).href;
+          if (reused.has(abs)) return; // already copied
           // cache:'reload' bypasses the HTTP cache so updates never install
           // a stale copy of a file that changed on the server.
           await cache.add(new Request(url, {cache: 'reload'}));
