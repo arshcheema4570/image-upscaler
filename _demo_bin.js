@@ -2288,6 +2288,7 @@
     sourceImage,
     model,
     accelerator,
+    environment,
     overlapPercent,
     normalizationRange,
     progressCallback
@@ -2357,7 +2358,7 @@
             tileData[destIdx + 2] = float32Data[srcIdx + 2];
           }
         }
-        const cpuInputTensor = new Tensor(tileData, [1, inputHeight, inputWidth, 3]);
+        const cpuInputTensor = new Tensor(tileData, [1, inputHeight, inputWidth, 3], environment);
         const inputTensor = accelerator === "webgpu" ? await cpuInputTensor.moveTo("webgpu") : cpuInputTensor;
         const [outputTensor] = await model.run([inputTensor]);
         inputTensor.delete();
@@ -2471,6 +2472,19 @@
         console.error(e5);
       }
     }
+    /**
+     * Dedicated CPU-only LiteRT environment (no WebGPU device). The default
+     * environment embeds a WebGPU device whenever one is available, and that
+     * device leaked into CPU-Compiled inference on some devices, crashing in
+     * a native Emval binding. Compiling and running CPU tensors against this
+     * isolated environment avoids the broken device entirely.
+     */
+    async getCpuEnvironment() {
+      if (!this.cpuEnvironment) {
+        this.cpuEnvironment = await Environment.create({ webGpuDevice: null });
+      }
+      return this.cpuEnvironment;
+    }
     async loadModel(name) {
       if (this.models[name]) return;
       this.models = { ...this.models, [name]: null };
@@ -2482,7 +2496,8 @@
         for (const accelerator of accelerators) {
           this.statusMessage = accelerator === "wasm" && lastError ? "WebGPU failed, falling back to CPU\u2026" : `Compiling ${name} (${accelerator === "webgpu" ? "GPU" : "CPU"})\u2026`;
           try {
-            const model = await loadAndCompile(modelData, { accelerator });
+            const compileEnv = accelerator === "wasm" ? await this.getCpuEnvironment() : void 0;
+            const model = await loadAndCompile(modelData, { accelerator, environment: compileEnv });
             this.models = { ...this.models, [name]: model };
             this.modelAccelerators = { ...this.modelAccelerators, [name]: accelerator };
             this.statusMessage = accelerator === "webgpu" ? "Ready. Please select an image." : "Ready (CPU mode \u2014 upscaling will be slower). Please select an image.";
@@ -2604,10 +2619,17 @@
       }
       this.isUpscaling = true;
       this.upscaledCanvas = null;
+      const accelerator = this.modelAccelerators[this.selectedModelName] ?? "wasm";
+      // Keep the CPU path fully isolated from WebGPU: compile and run with a
+      // dedicated environment that has no WebGPU device. On devices where the
+      // default environment embeds a (broken) WebGPU device, the device leaked
+      // into CPU inference and crashed in a native Emval binding.
+      const cpuEnv = accelerator === "wasm" ? await this.getCpuEnvironment() : null;
       const runUpscale = () => upscaleImageWithTiling({
         sourceImage: this.originalImage,
         model,
-        accelerator: this.modelAccelerators[this.selectedModelName] ?? "wasm",
+        accelerator,
+        environment: cpuEnv,
         overlapPercent: this.overlapPercent,
         normalizationRange: modelInfo.range,
         progressCallback: ({ message, value }) => {
@@ -2627,7 +2649,7 @@
           console.error("WebGPU upscaling failed, falling back to CPU:", e6);
           this.statusMessage = "WebGPU failed during upscaling, falling back to CPU\u2026";
           const modelData = await this.downloadModel(modelInfo.url);
-          model = await loadAndCompile(modelData, { accelerator: "wasm" });
+          model = await loadAndCompile(modelData, { accelerator: "wasm", environment: await this.getCpuEnvironment() });
           this.models = { ...this.models, [this.selectedModelName]: model };
           this.modelAccelerators = { ...this.modelAccelerators, [this.selectedModelName]: "wasm" };
           resultCanvas = await runUpscale();
@@ -2636,8 +2658,9 @@
         this.statusMessage = "Upscaling complete! Downloading\u2026";
         this.downloadUpscaledImage(resultCanvas);
       } catch (e5) {
-        this.statusMessage = `Error during upscaling: ${e5.message}`;
         console.error(e5);
+        const stackHint = (e5.stack || "").split("\n").slice(1, 4).join(" << ").slice(0, 400);
+        this.statusMessage = `Error during upscaling: ${e5.message}${stackHint ? " << " + stackHint : ""}`;
       } finally {
         this.isUpscaling = false;
       }
