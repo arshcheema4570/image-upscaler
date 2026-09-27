@@ -2389,18 +2389,6 @@
 
   // src/image_upscaler.ts
   var MODELS = {
-    "RealESRGAN x2plus": {
-      url: "./models/RealESRGAN-x2plus_float32.tflite",
-      licenseHtml: x`
-      <div class="license-info">
-        <a href="https://huggingface.co/skillsafe-ai/realesrgan-x2plus" target="_blank">Model: RealESRGAN_x2plus (ONNX)</a>
-        |
-        <a href="https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE" target="_blank">BSD-3-Clause License</a>
-      </div>
-    `,
-      range: [0, 1]
-      // Normalizes to [0, 1]
-    },
     "RealESR-General x4v3": {
       url: "./models/RealESR-General-x4v3_float32.tflite",
       licenseHtml: x`
@@ -2408,18 +2396,6 @@
         <a href="https://huggingface.co/qualcomm/Real-ESRGAN-General-x4v3" target="_blank">Model: RealESR-General-x4v3 by Qualcomm AI Hub</a>
         |
         <a href="https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE" target="_blank">Model License</a>
-      </div>
-    `,
-      range: [0, 1]
-      // Normalizes to [0, 1]
-    },
-    "ClearReality-x4": {
-      url: "./models/ClearReality-x4_float32.tflite",
-      licenseHtml: x`
-      <div class="license-info">
-        <a href="https://huggingface.co/Kim2091/ClearRealityV1" target="_blank">Model: ClearReality-x4 by Kim2091</a>
-        |
-        <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank">Apache-2.0 License</a>
       </div>
     `,
       range: [0, 1]
