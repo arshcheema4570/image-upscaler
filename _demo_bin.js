@@ -2389,13 +2389,13 @@
 
   // src/image_upscaler.ts
   var MODELS = {
-    "ClearReality-x4": {
-      url: "./models/ClearReality-x4_float32.tflite",
+    "Real-ESRGAN x4plus": {
+      url: "./models/Real-ESRGAN-x4plus_float.tflite",
       licenseHtml: x`
       <div class="license-info">
-        <a href="https://huggingface.co/Kim2091/ClearRealityV1" target="_blank">Model: ClearReality-x4 by Kim2091</a>
+        <a href="https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE" target="_blank">Model License</a>
         |
-        <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank">Apache-2.0 License</a>
+        <a href="https://huggingface.co/qualcomm/Real-ESRGAN-x4plus/blob/main/DEPLOYMENT_MODEL_LICENSE.pdf" target="_blank">Deployment License</a>
       </div>
     `,
       range: [0, 1]
