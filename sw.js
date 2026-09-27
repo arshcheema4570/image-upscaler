@@ -1,27 +1,27 @@
 /* Image Upscaler PWA service worker.
- * - Install: cache-first app shell + the bundled Real-ESRGAN .tflite model
+ * - Install: cache-first app shell + the bundled ClearReality-x4 .tflite model
  *   (relative URLs resolve under the SW scope, so this works at any subpath,
  *   e.g. GitHub Pages project sites).
- * - The 67MB model is reused from a previous cache version when present, so
- *   app updates don't re-download it (unreliable on mobile data and it would
- *   otherwise block the whole SW update).
+ * - The model is reused from a previous cache version when present, so
+ *   app updates don't re-download it. Old caches (including the retired
+ *   67MB Real-ESRGAN file) are purged on activate since the model URL changed.
  * - One bad file never fails the entire install; the runtime handler caches
  *   missing files on demand.
  * - Runtime: cache-first for same-origin requests (LiteRT wasm runtime).
  */
-const VERSION = 'upscaler-v14';
-const MODEL_PATH = './models/Real-ESRGAN-x4plus_float.tflite';
+const VERSION = 'upscaler-v15';
+const MODEL_PATH = './models/ClearReality-x4_float32.tflite';
 
 const APP_SHELL = [
   './',
   './index.html',
-  './_demo_bin.js?v=12',
+  './_demo_bin.js?v=15',
   './manifest.json',
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
-  // Real-ESRGAN x4plus model, bundled same-origin (fixes HuggingFace CORS
-  // redirect issues and makes the app fully offline-capable after install).
+  // ClearReality-x4 model, bundled same-origin (fully offline-capable
+  // after install; ~1.7MB vs the old 67MB Real-ESRGAN file).
   MODEL_PATH,
 ];
 
