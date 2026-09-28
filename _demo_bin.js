@@ -2692,10 +2692,10 @@
       this.enhanceMode = e5.target.value;
       this.requestUpdate();
     }
-    async loadEnhanceModel(mode) {
-      if (this.enhanceModels[mode]) return this.enhanceModels[mode];
+    async loadEnhanceModel(mode, onlyAccelerator) {
+      if (this.enhanceModels[mode] && !onlyAccelerator) return this.enhanceModels[mode];
       const info = ENHANCE_MODES[mode];
-      const accelerators = this.acceleratorPref === "webgpu" ? ["webgpu"] : this.acceleratorPref === "wasm" ? ["wasm"] : isWebGPUSupported() ? ["webgpu", "wasm"] : ["wasm"];
+      const accelerators = onlyAccelerator ? [onlyAccelerator] : this.acceleratorPref === "webgpu" ? ["webgpu"] : this.acceleratorPref === "wasm" ? ["wasm"] : isWebGPUSupported() ? ["webgpu", "wasm"] : ["wasm"];
       let lastError = null;
       for (const accelerator of accelerators) {
         this.statusMessage = `Loading ${info.label} (${accelerator === "webgpu" ? "GPU" : "CPU"})\u2026`;
@@ -2927,9 +2927,26 @@
         try {
           sourceImage = await this.runEnhance(this.originalImage);
         } catch (e6) {
-          console.error("Enhancement failed, upscaling original:", e6);
-          this.statusMessage = "Enhance failed, upscaling original image\u2026";
-          sourceImage = this.originalImage;
+          // The enhance model compiled but failed at inference (seen on devices
+          // where WebGPU is advertised yet broken). Retry once on CPU before
+          // giving up on enhancement, mirroring the upscaler's GPU->CPU retry.
+          const failedAccelerator = this.enhanceModels[this.enhanceMode]?.accelerator;
+          if (failedAccelerator === "webgpu") {
+            try {
+              delete this.enhanceModels[this.enhanceMode];
+              this.statusMessage = "Enhance failed on GPU, retrying on CPU\u2026";
+              await this.loadEnhanceModel(this.enhanceMode, "wasm");
+              sourceImage = await this.runEnhance(this.originalImage);
+            } catch (e7) {
+              console.error("Enhancement failed on CPU too, upscaling original:", e7);
+              this.statusMessage = "Enhance failed, upscaling original image\u2026";
+              sourceImage = this.originalImage;
+            }
+          } else {
+            console.error("Enhancement failed, upscaling original:", e6);
+            this.statusMessage = "Enhance failed, upscaling original image\u2026";
+            sourceImage = this.originalImage;
+          }
         }
       }
       const accelerator = this.modelAccelerators[this.selectedModelName] ?? "wasm";

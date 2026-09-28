@@ -9,7 +9,7 @@
  *   missing files on demand.
  * - Runtime: cache-first for same-origin requests (LiteRT wasm runtime).
  */
-const VERSION = 'upscaler-v22';
+const VERSION = 'upscaler-v23';
 const MODEL_PATHS = [
   './models/RealESR-General-x4v3_float32.tflite',
   './models/zerodce_512.tflite',
@@ -20,7 +20,7 @@ const MODEL_PATHS = [
 const APP_SHELL = [
   './',
   './index.html',
-  './_demo_bin.js?v=22',
+  './_demo_bin.js?v=23',
   './manifest.json',
   './icons/icon.svg',
   './icons/icon-192.png',
