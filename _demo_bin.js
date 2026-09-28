@@ -2206,6 +2206,51 @@
   progress {
     width: 100%;
   }
+  .save-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(20, 40, 60, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 1rem;
+    box-sizing: border-box;
+  }
+  .save-dialog {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 1.5rem;
+    max-width: 340px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  }
+  .save-dialog h2 {
+    margin: 0 0 0.5rem;
+    color: #274c77;
+    font-size: 1.25rem;
+  }
+  .save-dialog p {
+    color: #5a6b7c;
+    margin: 0.5rem 0;
+  }
+  .save-dims {
+    font-size: 0.85rem;
+  }
+  .save-error {
+    color: #b3261e;
+  }
+  .save-actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+    margin-top: 1rem;
+  }
+  .save-actions button.secondary {
+    background: #eaf1f6;
+    color: #274c77;
+  }
   .license-info {
     font-size: 0.75rem;
     color: #5a6b7c;
@@ -2302,6 +2347,19 @@
       throw new Error(
         "Model scale factor is not consistent between height and width."
       );
+    }
+    // iOS Safari cannot encode canvases larger than ~16.7MP: toBlob returns
+    // null and the canvas stays blank. Cap the output to a safe area by
+    // pre-shrinking the source; the model still performs its full 4x upscale.
+    const MAX_OUTPUT_AREA = 16e6;
+    const fullOutArea = sourceImage.width * scale * (sourceImage.height * scale);
+    if (fullOutArea > MAX_OUTPUT_AREA) {
+      const preScale = Math.sqrt(MAX_OUTPUT_AREA / fullOutArea);
+      const preCanvas = document.createElement("canvas");
+      preCanvas.width = Math.max(1, Math.floor(sourceImage.width * preScale));
+      preCanvas.height = Math.max(1, Math.floor(sourceImage.height * preScale));
+      preCanvas.getContext("2d").drawImage(sourceImage, 0, 0, preCanvas.width, preCanvas.height);
+      sourceImage = preCanvas;
     }
     progressCallback({ message: "Preparing image data...", value: 0 });
     const srcCanvas = document.createElement("canvas");
@@ -2412,6 +2470,9 @@
       this.originalFileName = "image";
       this.upscaledCanvas = null;
       this.isUpscaling = false;
+      this.showSaveDialog = false;
+      this.saveFile = null;
+      this.saveError = "";
       this.sliderValue = 50;
       this.isDraggingSlider = false;
       this.preventClick = false;
@@ -2655,8 +2716,8 @@
           resultCanvas = await runUpscale();
         }
         this.upscaledCanvas = resultCanvas;
-        this.statusMessage = "Upscaling complete! Downloading\u2026";
-        this.downloadUpscaledImage(resultCanvas);
+        this.statusMessage = "Upscaling complete!";
+        this.openSaveDialog(resultCanvas);
       } catch (e5) {
         console.error(e5);
         const stackHint = (e5.stack || "").split("\n").slice(1, 4).join(" << ").slice(0, 400);
@@ -2665,25 +2726,46 @@
         this.isUpscaling = false;
       }
     }
-    /** Auto-downloads the upscaled result as a PNG file. */
-    downloadUpscaledImage(canvas) {
+    /** Prepares the PNG file and pops up the save dialog. */
+    openSaveDialog(canvas) {
+      this.saveFile = null;
+      this.saveError = "";
+      this.showSaveDialog = true;
       canvas.toBlob((blob) => {
         if (!blob) {
-          this.statusMessage = "Upscaling complete! (Could not start download.)";
+          this.saveError = "Could not prepare the image on this device.";
           return;
         }
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
         const dlScale = Math.round(canvas.width / this.originalImage.naturalWidth) || 4;
-        link.download = `${this.originalFileName}-${dlScale}x.png`;
-        link.target = "_blank";
-        link.rel = "noopener";
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 6e4);
+        this.saveFile = new File([blob], `${this.originalFileName}-${dlScale}x.png`, { type: "image/png" });
       }, "image/png");
+    }
+    /** Saves via the native share sheet (iOS) or a direct download (desktop). */
+    async saveImage() {
+      const file = this.saveFile;
+      if (!file) return;
+      try {
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: "Upscaled image" });
+          this.statusMessage = "Shared \u2014 pick Save to Photos or Save to Files.";
+        } else {
+          const url = URL.createObjectURL(file);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = file.name;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 6e4);
+          this.statusMessage = "Upscaling complete! Download started.";
+        }
+      } catch (e) {
+        if (!e || e.name !== "AbortError") {
+          this.statusMessage = `Save failed: ${(e && e.message) || e}`;
+        }
+      } finally {
+        this.showSaveDialog = false;
+      }
     }
     render() {
       const currentModel = this.models[this.selectedModelName];
@@ -2746,6 +2828,22 @@
           <p class="status">${this.statusMessage}</p>
           ${this.isUpscaling ? x`<progress max="1" .value=${this.progressValue}></progress>` : ""}
         </div>
+        ${this.showSaveDialog ? x`
+          <div class="save-overlay" @click=${(e5) => {
+        if (e5.target.classList.contains("save-overlay")) this.showSaveDialog = false;
+      }}>
+            <div class="save-dialog" role="dialog" aria-label="Save upscaled image">
+              <h2>Upscaling complete!</h2>
+              ${this.upscaledCanvas ? x`<p class="save-dims">${this.upscaledCanvas.width} \u00d7 ${this.upscaledCanvas.height} px</p>` : ""}
+              ${this.saveError ? x`<p class="save-error">${this.saveError}</p>` : x`
+                <p>${this.saveFile ? "Your image is ready." : "Preparing image\u2026"}</p>
+                <div class="save-actions">
+                  <button @click=${() => this.saveImage()} .disabled=${!this.saveFile}>\u{1F4BE} Save image</button>
+                  <button class="secondary" @click=${() => this.showSaveDialog = false}>Close</button>
+                </div>`}
+            </div>
+          </div>
+        ` : ""}
       </div>
     `;
     }
@@ -2772,6 +2870,15 @@
   __decorateClass([
     r5()
   ], ImageUpscaler.prototype, "isUpscaling", 2);
+  __decorateClass([
+    r5()
+  ], ImageUpscaler.prototype, "showSaveDialog", 2);
+  __decorateClass([
+    r5()
+  ], ImageUpscaler.prototype, "saveFile", 2);
+  __decorateClass([
+    r5()
+  ], ImageUpscaler.prototype, "saveError", 2);
   __decorateClass([
     r5()
   ], ImageUpscaler.prototype, "sliderValue", 2);
