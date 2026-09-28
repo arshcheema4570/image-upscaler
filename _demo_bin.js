@@ -2231,6 +2231,9 @@
     color: #274c77;
     font-size: 1.25rem;
   }
+  .save-persistent {
+    margin: 0.25rem 0 0.75rem;
+  }
   .save-dialog p {
     color: #5a6b7c;
     margin: 0.5rem 0;
@@ -2277,6 +2280,7 @@
     display: block;
     cursor: ew-resize;
     user-select: none; /* prevent text selection while dragging */
+    touch-action: none; /* let pointer drags move the slider on touch screens */
   }
 
   .comparison-container .comparison-img,
@@ -2492,6 +2496,7 @@
       this.showSaveDialog = false;
       this.saveFile = null;
       this.saveError = "";
+      this.saveDialogTitle = "Upscaling complete!";
       this.sliderValue = 50;
       this.isDraggingSlider = false;
       this.preventClick = false;
@@ -2509,7 +2514,9 @@
         if (!this.isDraggingSlider || !this.comparisonContainerRect) {
           return;
         }
-        if (e5.buttons === 0) {
+        // Touch pointers have no buttons to release mid-drag; only the mouse
+        // path can lose its button without a pointerup.
+        if (e5.pointerType === "mouse" && e5.buttons === 0) {
           this.stopDrag();
           return;
         }
@@ -2524,14 +2531,17 @@
         this.isDraggingSlider = false;
         this.comparisonContainerRect = null;
         this.dragStartX = null;
-        window.removeEventListener("mousemove", this.handleDragMove);
-        window.removeEventListener("mouseup", this.stopDrag);
+        window.removeEventListener("pointermove", this.handleDragMove);
+        window.removeEventListener("pointerup", this.stopDrag);
+        window.removeEventListener("pointercancel", this.stopDrag);
         setTimeout(() => {
           this.preventClick = false;
         }, 0);
       };
       this.startDrag = (e5) => {
-        if (e5.button !== 0) {
+        // Pointer Events unify mouse / touch / stylus. Ignore non-primary
+        // mouse buttons; touch and pen always start a drag.
+        if (e5.pointerType === "mouse" && e5.button !== 0) {
           return;
         }
         e5.preventDefault();
@@ -2540,8 +2550,9 @@
         this.dragStartX = e5.clientX;
         const container = e5.currentTarget;
         this.comparisonContainerRect = container.getBoundingClientRect();
-        window.addEventListener("mousemove", this.handleDragMove);
-        window.addEventListener("mouseup", this.stopDrag);
+        window.addEventListener("pointermove", this.handleDragMove);
+        window.addEventListener("pointerup", this.stopDrag);
+        window.addEventListener("pointercancel", this.stopDrag);
       };
     }
     async firstUpdated() {
@@ -2680,7 +2691,7 @@
     renderComparison() {
       return x`
       <div class="comparison-container"
-           @mousedown=${this.startDrag}
+           @pointerdown=${this.startDrag}
       >
         <img
           class="comparison-img"
@@ -2967,7 +2978,7 @@
         try {
           this.upscaledCanvas = sourceImage;
           this.statusMessage = "Enhancement complete!";
-          this.openSaveDialog(sourceImage);
+          this.openSaveDialog(sourceImage, "Enhancement complete!");
         } catch (e5) {
           console.error(e5);
           this.statusMessage = `Error during enhancement: ${e5.message}`;
@@ -3012,7 +3023,7 @@
         }
         this.upscaledCanvas = resultCanvas;
         this.statusMessage = "Upscaling complete!";
-        this.openSaveDialog(resultCanvas);
+        this.openSaveDialog(resultCanvas, "Upscaling complete!");
       } catch (e5) {
         console.error(e5);
         const stackHint = (e5.stack || "").split("\n").slice(1, 4).join(" << ").slice(0, 400);
@@ -3022,9 +3033,10 @@
       }
     }
     /** Prepares the PNG file and pops up the save dialog. */
-    openSaveDialog(canvas) {
+    openSaveDialog(canvas, heading) {
       this.saveFile = null;
       this.saveError = "";
+      if (heading) this.saveDialogTitle = heading;
       this.showSaveDialog = true;
       canvas.toBlob((blob) => {
         if (!blob) {
@@ -3130,6 +3142,7 @@
 
         <div class="footer">
           <p class="status">${this.statusMessage}</p>
+          ${this.upscaledCanvas && !this.isUpscaling ? x`<button class="save-persistent" @click=${() => this.openSaveDialog(this.upscaledCanvas)}>💾 Save image</button>` : ""}
           ${this.isUpscaling ? x`<progress max="1" .value=${this.progressValue}></progress>` : ""}
         </div>
         ${this.showSaveDialog ? x`
@@ -3137,7 +3150,7 @@
         if (e5.target.classList.contains("save-overlay")) this.showSaveDialog = false;
       }}>
             <div class="save-dialog" role="dialog" aria-label="Save upscaled image">
-              <h2>Upscaling complete!</h2>
+              <h2>${this.saveDialogTitle}</h2>
               ${this.upscaledCanvas ? x`<p class="save-dims">${this.upscaledCanvas.width} \u00d7 ${this.upscaledCanvas.height} px</p>` : ""}
               ${this.saveError ? x`<p class="save-error">${this.saveError}</p>` : x`
                 <p>${this.saveFile ? "Your image is ready." : "Preparing image\u2026"}</p>
