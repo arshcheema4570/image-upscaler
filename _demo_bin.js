@@ -2445,6 +2445,11 @@
     `,
       range: [0, 1]
       // Normalizes to [0, 1]
+    },
+    "None": {
+      // No upscaler: runs enhancement only and returns the enhanced image
+      // at its original resolution.
+      none: true
     }
   };
   // ---- On-device photo enhancement (Zero-DCE / HDRNet) ----
@@ -2563,6 +2568,7 @@
       return this.cpuEnvironment;
     }
     async loadModel(name) {
+      if (MODELS[name]?.none) return; // "None" needs nothing compiled
       if (this.models[name]) return;
       this.models = { ...this.models, [name]: null };
       const modelInfo = MODELS[name];
@@ -2914,10 +2920,15 @@
       return { data: out, w, h };
     }
     async handleUpscale() {
+      const enhanceOnly = MODELS[this.selectedModelName]?.none === true;
       let model = this.models[this.selectedModelName];
       const modelInfo = MODELS[this.selectedModelName];
-      if (!this.originalImage || !model) {
+      if (!this.originalImage || (!enhanceOnly && !model)) {
         this.statusMessage = "Please load an image and wait for the model to compile.";
+        return;
+      }
+      if (enhanceOnly && this.enhanceMode === "none") {
+        this.statusMessage = "Nothing to do \u2014 pick an upscaler or an enhancement.";
         return;
       }
       this.isUpscaling = true;
@@ -2950,6 +2961,21 @@
         }
       }
       const accelerator = this.modelAccelerators[this.selectedModelName] ?? "wasm";
+      // "None" upscaler: skip the 4x pass entirely, return the enhanced image
+      // at its original resolution through the same save flow.
+      if (enhanceOnly) {
+        try {
+          this.upscaledCanvas = sourceImage;
+          this.statusMessage = "Enhancement complete!";
+          this.openSaveDialog(sourceImage);
+        } catch (e5) {
+          console.error(e5);
+          this.statusMessage = `Error during enhancement: ${e5.message}`;
+        } finally {
+          this.isUpscaling = false;
+        }
+        return;
+      }
       // Keep the CPU path fully isolated from WebGPU: compile and run with a
       // dedicated environment that has no WebGPU device. On devices where the
       // default environment embeds a (broken) WebGPU device, the device leaked
@@ -3080,8 +3106,8 @@
               .value=${`${this.overlapPercent}`}
               @input=${(e5) => this.overlapPercent = Number(e5.target.value)}>
           </div>
-          <button @click=${this.handleUpscale} .disabled=${!this.originalImage || !currentModel || this.isUpscaling}>
-            ${this.isUpscaling ? "Upscaling..." : "\u{1F680} Upscale"}
+          <button @click=${this.handleUpscale} .disabled=${!this.originalImage || (!MODELS[this.selectedModelName]?.none && !currentModel) || this.isUpscaling}>
+            ${this.isUpscaling ? "Working..." : MODELS[this.selectedModelName]?.none ? "\u2728 Enhance" : "\u{1F680} Upscale"}
           </button>
         </div>
 
