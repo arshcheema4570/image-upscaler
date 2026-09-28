@@ -9,7 +9,7 @@
  *   missing files on demand.
  * - Runtime: cache-first for same-origin requests (LiteRT wasm runtime).
  */
-const VERSION = 'upscaler-v20';
+const VERSION = 'upscaler-v21';
 const MODEL_PATHS = [
   './models/RealESR-General-x4v3_float32.tflite',
 ];

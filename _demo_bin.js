@@ -2348,19 +2348,6 @@
         "Model scale factor is not consistent between height and width."
       );
     }
-    // iOS Safari cannot encode canvases larger than ~16.7MP: toBlob returns
-    // null and the canvas stays blank. Cap the output to a safe area by
-    // pre-shrinking the source; the model still performs its full 4x upscale.
-    const MAX_OUTPUT_AREA = 16e6;
-    const fullOutArea = sourceImage.width * scale * (sourceImage.height * scale);
-    if (fullOutArea > MAX_OUTPUT_AREA) {
-      const preScale = Math.sqrt(MAX_OUTPUT_AREA / fullOutArea);
-      const preCanvas = document.createElement("canvas");
-      preCanvas.width = Math.max(1, Math.floor(sourceImage.width * preScale));
-      preCanvas.height = Math.max(1, Math.floor(sourceImage.height * preScale));
-      preCanvas.getContext("2d").drawImage(sourceImage, 0, 0, preCanvas.width, preCanvas.height);
-      sourceImage = preCanvas;
-    }
     progressCallback({ message: "Preparing image data...", value: 0 });
     const srcCanvas = document.createElement("canvas");
     srcCanvas.width = sourceImage.width;
