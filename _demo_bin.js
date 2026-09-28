@@ -2449,38 +2449,6 @@
     `,
       range: [0, 1]
       // Normalizes to [0, 1]
-    },
-    "None": {
-      // No upscaler: runs enhancement only and returns the enhanced image
-      // at its original resolution.
-      none: true
-    }
-  };
-  // ---- On-device photo enhancement (Zero-DCE / HDRNet) ----
-  // Zero-DCE: tiny low-light curve estimator, tiled at 512px (LiteRT.js has
-  // no dynamic-shape resize API, so the model is fixed [1,512,512,3]).
-  // HDRNet: TFLite predicts the 16x16x8 bilateral grid from a 256x256 lowres
-  // copy; the guide map + bilateral slice run per-pixel in JS (simple math,
-  // faster than round-tripping giant tensors through the runtime).
-  var ENHANCE_MODES = {
-    "hdrnet": {
-      label: "HDRNet",
-      url: "./models/hdrnet_coeff.tflite",
-      guideUrl: "./models/hdrnet_guide.json",
-      licenseHtml: x`
-      <div class="license-info">
-        <a href="https://github.com/google/hdrnet" target="_blank">Enhance model: HDRNet (Gharbi et al., SIGGRAPH Asia 2017)</a>
-      </div>
-    `
-    },
-    "zerodce": {
-      label: "Zero-DCE",
-      url: "./models/zerodce_512.tflite",
-      licenseHtml: x`
-      <div class="license-info">
-        <a href="https://github.com/Li-Chongyi/Zero-DCE" target="_blank">Enhance model: Zero-DCE (Guo et al., CVPR 2020)</a>
-      </div>
-    `
     }
   };
   var ImageUpscaler = class extends i4 {
@@ -2508,8 +2476,6 @@
       // Which accelerator each compiled model uses ('webgpu' or 'wasm').
       this.modelAccelerators = {};
       this.acceleratorPref = "auto";
-      this.enhanceMode = "none";
-      this.enhanceModels = {};
       this.handleDragMove = (e5) => {
         if (!this.isDraggingSlider || !this.comparisonContainerRect) {
           return;
@@ -2579,7 +2545,6 @@
       return this.cpuEnvironment;
     }
     async loadModel(name) {
-      if (MODELS[name]?.none) return; // "None" needs nothing compiled
       if (this.models[name]) return;
       this.models = { ...this.models, [name]: null };
       const modelInfo = MODELS[name];
@@ -2685,7 +2650,6 @@
     onAcceleratorChange(e5) {
       this.acceleratorPref = e5.target.value;
       this.models = { ...this.models, [this.selectedModelName]: null };
-      this.enhanceModels = {};
       this.loadModel(this.selectedModelName);
     }
     renderComparison() {
@@ -2705,288 +2669,17 @@
       </div>
     `;
     }
-    onEnhanceChange(e5) {
-      this.enhanceMode = e5.target.value;
-      this.requestUpdate();
-    }
-    async loadEnhanceModel(mode, onlyAccelerator) {
-      if (this.enhanceModels[mode] && !onlyAccelerator) return this.enhanceModels[mode];
-      const info = ENHANCE_MODES[mode];
-      const accelerators = onlyAccelerator ? [onlyAccelerator] : this.acceleratorPref === "webgpu" ? ["webgpu"] : this.acceleratorPref === "wasm" ? ["wasm"] : isWebGPUSupported() ? ["webgpu", "wasm"] : ["wasm"];
-      let lastError = null;
-      for (const accelerator of accelerators) {
-        this.statusMessage = `Loading ${info.label} (${accelerator === "webgpu" ? "GPU" : "CPU"})\u2026`;
-        try {
-          const modelData = await this.downloadModel(info.url);
-          const compileEnv = accelerator === "wasm" ? await this.getCpuEnvironment() : void 0;
-          const model = await loadAndCompile(modelData, { accelerator, environment: compileEnv });
-          const entry = { model, accelerator };
-          this.enhanceModels = { ...this.enhanceModels, [mode]: entry };
-          return entry;
-        } catch (e6) {
-          lastError = e6;
-          console.error(`Enhance model ${mode} failed on ${accelerator}:`, e6);
-        }
-      }
-      throw lastError;
-    }
-    async runTfliteNHWC(entry, inputData, h, w, environment) {
-      const { model, accelerator } = entry;
-      const cpuTensor = new Tensor(inputData, [1, h, w, 3], environment);
-      const inputTensor = accelerator === "webgpu" ? await cpuTensor.moveTo("webgpu") : cpuTensor;
-      const [outputTensor] = await model.run([inputTensor]);
-      inputTensor.delete();
-      const outputCpu = accelerator === "webgpu" ? await outputTensor.moveTo("wasm") : outputTensor;
-      const outputData = outputCpu.toTypedArray();
-      outputCpu.delete();
-      return outputData;
-    }
-    async runEnhance(sourceImage) {
-      const mode = this.enhanceMode;
-      const entry = await this.loadEnhanceModel(mode);
-      const environment = entry.accelerator === "wasm" ? await this.getCpuEnvironment() : null;
-      const srcCanvas = document.createElement("canvas");
-      srcCanvas.width = sourceImage.width;
-      srcCanvas.height = sourceImage.height;
-      srcCanvas.getContext("2d").drawImage(sourceImage, 0, 0);
-      let res;
-      if (mode === "zerodce") res = await this.runZeroDCE(srcCanvas, entry, environment);
-      else res = await this.runHDRNet(srcCanvas, entry, environment);
-      const outCanvas = document.createElement("canvas");
-      outCanvas.width = res.w;
-      outCanvas.height = res.h;
-      const outCtx = outCanvas.getContext("2d");
-      const imgData = outCtx.createImageData(res.w, res.h);
-      const d = imgData.data, f = res.data;
-      for (let i = 0, j = 0; i < d.length; i += 4, j += 3) {
-        d[i] = Math.max(0, Math.min(255, Math.round(f[j] * 255)));
-        d[i + 1] = Math.max(0, Math.min(255, Math.round(f[j + 1] * 255)));
-        d[i + 2] = Math.max(0, Math.min(255, Math.round(f[j + 2] * 255)));
-        d[i + 3] = 255;
-      }
-      outCtx.putImageData(imgData, 0, 0);
-      this.statusMessage = "Enhancement complete.";
-      return outCanvas;
-    }
-    async runZeroDCE(srcCanvas, entry, environment) {
-      const w = srcCanvas.width, h = srcCanvas.height;
-      const TS = 512, OV = 64, step = TS - OV; // 64px feathered overlap
-      const srcCtx = srcCanvas.getContext("2d");
-      const srcPx = srcCtx.getImageData(0, 0, w, h).data;
-      const acc = new Float32Array(w * h * 3);
-      const wsum = new Float32Array(w * h);
-      const repW = Math.ceil((w - TS) / step) + 1;
-      const repH = Math.ceil((h - TS) / step) + 1;
-      const total = repW * repH;
-      let done = 0;
-      for (let ty = 0; ty < repH; ty++) {
-        for (let tx = 0; tx < repW; tx++) {
-          const ox = Math.min(tx * step, Math.max(0, w - TS));
-          const oy = Math.min(ty * step, Math.max(0, h - TS));
-          // Edge-replicate the (possibly smaller) edge tile out to 512x512.
-          const tile = new Float32Array(TS * TS * 3);
-          for (let y = 0; y < TS; y++) {
-            const gy = Math.min(oy + y, h - 1);
-            for (let x = 0; x < TS; x++) {
-              const gx = Math.min(ox + x, w - 1);
-              const sIdx = (gy * w + gx) * 4, dIdx = (y * TS + x) * 3;
-              tile[dIdx] = srcPx[sIdx] / 255;
-              tile[dIdx + 1] = srcPx[sIdx + 1] / 255;
-              tile[dIdx + 2] = srcPx[sIdx + 2] / 255;
-            }
-          }
-          const tOut = await this.runTfliteNHWC(entry, tile, TS, TS, environment);
-          // Feather-blend the tile back with a 64px raised-cosine ramp.
-          const x0 = Math.max(0, ox), x1 = Math.min(w, ox + TS);
-          const y0 = Math.max(0, oy), y1 = Math.min(h, oy + TS);
-          for (let y = y0; y < y1; y++) {
-            const wy = y - oy;
-            const fy = wy < OV / 2 && oy > 0 ? 0.5 - 0.5 * Math.cos(Math.PI * wy / OV)
-                     : wy > TS - 1 - OV / 2 && oy + TS < h ? 0.5 + 0.5 * Math.cos(Math.PI * (wy - (TS - OV)) / OV)
-                     : 1;
-            for (let x = x0; x < x1; x++) {
-              const wx = x - ox;
-              const fx = wx < OV / 2 && ox > 0 ? 0.5 - 0.5 * Math.cos(Math.PI * wx / OV)
-                       : wx > TS - 1 - OV / 2 && ox + TS < w ? 0.5 + 0.5 * Math.cos(Math.PI * (wx - (TS - OV)) / OV)
-                       : 1;
-              const f = fx * fy;
-              const sIdx = ((y - oy) * TS + (x - ox)) * 3;
-              const dIdx = (y * w + x) * 3;
-              acc[dIdx] += f * tOut[sIdx];
-              acc[dIdx + 1] += f * tOut[sIdx + 1];
-              acc[dIdx + 2] += f * tOut[sIdx + 2];
-              wsum[y * w + x] += f;
-            }
-          }
-          done++;
-          this.statusMessage = `Enhancing (Zero-DCE)\u2026 ${done}/${total} tiles`;
-          this.progressValue = done / total * 0.5;
-          await new Promise((r) => setTimeout(r, 0));
-        }
-      }
-      const out = new Float32Array(w * h * 3);
-      for (let i = 0; i < w * h; i++) {
-        const ws = wsum[i] || 1;
-        out[i * 3] = acc[i * 3] / ws;
-        out[i * 3 + 1] = acc[i * 3 + 1] / ws;
-        out[i * 3 + 2] = acc[i * 3 + 2] / ws;
-      }
-      return { data: out, w, h };
-    }
-    async runHDRNet(srcCanvas, entry, environment) {
-      const w = srcCanvas.width, h = srcCanvas.height;
-      this.statusMessage = "Enhancing (HDRNet)\u2026 predicting coefficients\u2026";
-      this.progressValue = 0.05;
-      const lr = document.createElement("canvas");
-      lr.width = 256;
-      lr.height = 256;
-      const lrCtx = lr.getContext("2d");
-      lrCtx.imageSmoothingEnabled = false; // nearest-neighbour, like the official runner
-      lrCtx.drawImage(srcCanvas, 0, 0, 256, 256);
-      const lrPx = lrCtx.getImageData(0, 0, 256, 256).data;
-      const lrF = new Float32Array(256 * 256 * 3);
-      for (let i = 0, j = 0; i < lrPx.length; i += 4, j += 3) {
-        lrF[j] = lrPx[i] / 255;
-        lrF[j + 1] = lrPx[i + 1] / 255;
-        lrF[j + 2] = lrPx[i + 2] / 255;
-      }
-      const grid = await this.runTfliteNHWC(entry, lrF, 256, 256, environment);
-      if (!this.hdrnetGuide) {
-        const res = await fetch(ENHANCE_MODES["hdrnet"].guideUrl);
-        if (!res.ok) throw new Error(`guide weights HTTP ${res.status}`);
-        this.hdrnetGuide = await res.json();
-      }
-      const G = this.hdrnetGuide;
-      const out = new Float32Array(w * h * 3);
-      const srcCtx = srcCanvas.getContext("2d");
-      const sxStep = 16 / w, syStep = 16 / h;
-      const STRIP = 256;
-      for (let y0 = 0; y0 < h; y0 += STRIP) {
-        const sh = Math.min(STRIP, h - y0);
-        const px = srcCtx.getImageData(0, y0, w, sh).data;
-        for (let y = 0; y < sh; y++) {
-          const gyAbs = y0 + y;
-          const gyf = (gyAbs + 0.5) * syStep;
-          const gy0i = Math.floor(gyf - 0.5);
-          for (let x = 0; x < w; x++) {
-            const pi = (y * w + x) * 4, oi = (gyAbs * w + x) * 3;
-            const r = px[pi] / 255, g = px[pi + 1] / 255, b = px[pi + 2] / 255;
-            const y0c = r * G.ccm[0][0] + g * G.ccm[1][0] + b * G.ccm[2][0] + G.ccm_bias[0];
-            const y1c = r * G.ccm[0][1] + g * G.ccm[1][1] + b * G.ccm[2][1] + G.ccm_bias[1];
-            const y2c = r * G.ccm[0][2] + g * G.ccm[1][2] + b * G.ccm[2][2] + G.ccm_bias[2];
-            let z0 = 0, z1 = 0, z2 = 0;
-            for (let k = 0; k < 16; k++) {
-              const d0 = y0c - G.shifts[0][k];
-              if (d0 > 0) z0 += G.slopes[0][k] * d0;
-              const d1 = y1c - G.shifts[1][k];
-              if (d1 > 0) z1 += G.slopes[1][k] * d1;
-              const d2 = y2c - G.shifts[2][k];
-              if (d2 > 0) z2 += G.slopes[2][k] * d2;
-            }
-            let guide = z0 * G.cm_w[0] + z1 * G.cm_w[1] + z2 * G.cm_w[2] + G.cm_b;
-            guide = guide < 0 ? 0 : guide > 1 ? 1 : guide;
-            const gxf = (x + 0.5) * sxStep;
-            const gzf = guide * 8;
-            const gx0i = Math.floor(gxf - 0.5);
-            const gz0i = Math.floor(gzf - 0.5);
-            let a00 = 0, a01 = 0, a02 = 0, a03 = 0;
-            let a10 = 0, a11 = 0, a12 = 0, a13 = 0;
-            let a20 = 0, a21 = 0, a22 = 0, a23 = 0;
-            for (let dz = 0; dz < 2; dz++) {
-              const gzc = gz0i + dz;
-              const gzcC = gzc < 0 ? 0 : gzc > 7 ? 7 : gzc;
-              let wz = 1 - Math.sqrt((gz0i + dz + 0.5 - gzf) ** 2 + 1e-8);
-              wz = wz < 0 ? 0 : wz;
-              for (let dy = 0; dy < 2; dy++) {
-                const gyc = gy0i + dy;
-                const gycC = gyc < 0 ? 0 : gyc > 15 ? 15 : gyc;
-                let wy = 1 - Math.abs(gy0i + dy + 0.5 - gyf);
-                wy = wy < 0 ? 0 : wy;
-                const wzy = wz * wy;
-                for (let dx = 0; dx < 2; dx++) {
-                  const gxc = gx0i + dx;
-                  const gxcC = gxc < 0 ? 0 : gxc > 15 ? 15 : gxc;
-                  let wx = 1 - Math.abs(gx0i + dx + 0.5 - gxf);
-                  wx = wx < 0 ? 0 : wx;
-                  const wt = wzy * wx;
-                  const base = ((gycC * 16 + gxcC) * 8 + gzcC) * 12;
-                  a00 += wt * grid[base]; a01 += wt * grid[base + 1];
-                  a02 += wt * grid[base + 2]; a03 += wt * grid[base + 3];
-                  a10 += wt * grid[base + 4]; a11 += wt * grid[base + 5];
-                  a12 += wt * grid[base + 6]; a13 += wt * grid[base + 7];
-                  a20 += wt * grid[base + 8]; a21 += wt * grid[base + 9];
-                  a22 += wt * grid[base + 10]; a23 += wt * grid[base + 11];
-                }
-              }
-            }
-            out[oi] = a00 * r + a01 * g + a02 * b + a03;
-            out[oi + 1] = a10 * r + a11 * g + a12 * b + a13;
-            out[oi + 2] = a20 * r + a21 * g + a22 * b + a23;
-          }
-        }
-        this.statusMessage = `Enhancing (HDRNet)\u2026 ${Math.min(y0 + STRIP, h)}/${h} rows`;
-        this.progressValue = 0.05 + (y0 + sh) / h * 0.45;
-        await new Promise((r2) => setTimeout(r2, 0));
-      }
-      return { data: out, w, h };
-    }
     async handleUpscale() {
-      const enhanceOnly = MODELS[this.selectedModelName]?.none === true;
       let model = this.models[this.selectedModelName];
       const modelInfo = MODELS[this.selectedModelName];
-      if (!this.originalImage || (!enhanceOnly && !model)) {
+      if (!this.originalImage || !model) {
         this.statusMessage = "Please load an image and wait for the model to compile.";
-        return;
-      }
-      if (enhanceOnly && this.enhanceMode === "none") {
-        this.statusMessage = "Nothing to do \u2014 pick an upscaler or an enhancement.";
         return;
       }
       this.isUpscaling = true;
       this.upscaledCanvas = null;
-      let sourceImage = this.originalImage;
-      if (this.enhanceMode !== "none") {
-        try {
-          sourceImage = await this.runEnhance(this.originalImage);
-        } catch (e6) {
-          // The enhance model compiled but failed at inference (seen on devices
-          // where WebGPU is advertised yet broken). Retry once on CPU before
-          // giving up on enhancement, mirroring the upscaler's GPU->CPU retry.
-          const failedAccelerator = this.enhanceModels[this.enhanceMode]?.accelerator;
-          if (failedAccelerator === "webgpu") {
-            try {
-              delete this.enhanceModels[this.enhanceMode];
-              this.statusMessage = "Enhance failed on GPU, retrying on CPU\u2026";
-              await this.loadEnhanceModel(this.enhanceMode, "wasm");
-              sourceImage = await this.runEnhance(this.originalImage);
-            } catch (e7) {
-              console.error("Enhancement failed on CPU too, upscaling original:", e7);
-              this.statusMessage = "Enhance failed, upscaling original image\u2026";
-              sourceImage = this.originalImage;
-            }
-          } else {
-            console.error("Enhancement failed, upscaling original:", e6);
-            this.statusMessage = "Enhance failed, upscaling original image\u2026";
-            sourceImage = this.originalImage;
-          }
-        }
-      }
+      const sourceImage = this.originalImage;
       const accelerator = this.modelAccelerators[this.selectedModelName] ?? "wasm";
-      // "None" upscaler: skip the 4x pass entirely, return the enhanced image
-      // at its original resolution through the same save flow.
-      if (enhanceOnly) {
-        try {
-          this.upscaledCanvas = sourceImage;
-          this.statusMessage = "Enhancement complete!";
-          this.openSaveDialog(sourceImage, "Enhancement complete!");
-        } catch (e5) {
-          console.error(e5);
-          this.statusMessage = `Error during enhancement: ${e5.message}`;
-        } finally {
-          this.isUpscaling = false;
-        }
-        return;
-      }
       // Keep the CPU path fully isolated from WebGPU: compile and run with a
       // dedicated environment that has no WebGPU device. On devices where the
       // default environment embeds a (broken) WebGPU device, the device leaked
@@ -3089,15 +2782,7 @@
             </select>
             ${MODELS[this.selectedModelName]?.licenseHtml ?? ""}
           </div>
-          <div class="control-group">
-            <label for="enhance-select">Enhance:</label>
-            <select id="enhance-select" @change=${this.onEnhanceChange}>
-              <option value="none">None</option>
-              <option value="hdrnet">HDRNet</option>
-              <option value="zerodce">Zero-DCE</option>
-            </select>
-            ${ENHANCE_MODES[this.enhanceMode]?.licenseHtml ?? ""}
-          </div>
+          
           <div class="control-group">
             <label for="accelerator-select">Processor:</label>
             <select id="accelerator-select" @change=${this.onAcceleratorChange}>
@@ -3119,7 +2804,7 @@
               @input=${(e5) => this.overlapPercent = Number(e5.target.value)}>
           </div>
           <button @click=${this.handleUpscale} .disabled=${!this.originalImage || (!MODELS[this.selectedModelName]?.none && !currentModel) || this.isUpscaling}>
-            ${this.isUpscaling ? "Working..." : MODELS[this.selectedModelName]?.none ? "\u2728 Enhance" : "\u{1F680} Upscale"}
+            ${this.isUpscaling ? "Working..." : "\u{1F680} Upscale"}
           </button>
         </div>
 
