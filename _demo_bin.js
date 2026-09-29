@@ -2180,10 +2180,23 @@
     cursor: pointer;
     transition: background-color 0.2s;
     overflow: hidden;
+    position: relative;
   }
-  .drop-zone:hover {
+  .drop-zone:hover,
+  .drop-zone:focus-within {
     background-color: #f5f9fc;
     border-color: #274c77;
+  }
+  /* Invisible file input covering the dropzone: clicks land natively on the
+     input (trusted gesture, keyboard-focusable, automation-friendly) instead
+     of going through a JS click() chain from a div. */
+  .file-input-overlay {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
   }
   .drop-zone p {
     color: #5a6b7c;
@@ -2274,6 +2287,7 @@
 
   .comparison-container {
     position: relative;
+    z-index: 1; /* above the file-input overlay so slider drags aren't swallowed */
     width: 100%;
     max-height: 100%;
     overflow: hidden;
@@ -2649,6 +2663,7 @@
     }
     onDrop(e5) {
       e5.preventDefault();
+      if (e5.target && e5.target.id === "file-input") return; // input handled the drop natively
       this.handleFileSelect(e5.dataTransfer?.files[0]);
     }
     onFileChange(e5) {
@@ -2824,17 +2839,13 @@
           class="drop-zone"
           @dragover=${(e5) => e5.preventDefault()}
           @drop=${this.onDrop}
-          @click=${() => {
-        if (this.preventClick) return;
-        this.shadowRoot?.querySelector("#file-input")?.click();
-      }}
         >
           ${this.upscaledCanvas && this.originalSrc ? this.renderComparison() : this.originalSrc ? x`
             <img src=${this.originalSrc} alt="display image" />
           ` : x`
             <p>Drag & Drop an Image Here, or Click to Select</p>
           `}
-          <input type="file" id="file-input" @change=${this.onFileChange} accept="image/*" hidden>
+          <input type="file" id="file-input" class="file-input-overlay" @change=${this.onFileChange} accept="image/*" aria-label="Select an image to upscale">
         </div>
 
         <div class="footer">
