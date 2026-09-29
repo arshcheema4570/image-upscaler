@@ -2723,9 +2723,9 @@
         environment: cpuEnv,
         overlapPercent: accelerator === "webgpu" ? Math.min(this.overlapPercent, 5) : this.overlapPercent,
         normalizationRange: modelInfo.range,
-        // Keep Chromebook CPU memory bounded for very large photos; WebGPU
-        // keeps the original dimensions for maximum quality.
-        maxInputDimension: accelerator === "wasm" ? 2048 : 0,
+        // Keep full-resolution tiled processing for low-powered devices.
+        // Tiling bounds tensor memory; no quality-reducing resize is applied.
+        maxInputDimension: 0,
         progressCallback: ({ message, value }) => {
           this.statusMessage = message;
           this.progressValue = value;
