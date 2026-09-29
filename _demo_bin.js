@@ -2355,7 +2355,8 @@
     overlapPercent,
     normalizationRange,
     progressCallback,
-    maxInputDimension = 0
+    maxInputDimension = 0,
+    useTiling = true
   }) {
     const inputDetails = model.getInputDetails()[0];
     const outputDetails = model.getOutputDetails()[0];
@@ -2377,6 +2378,49 @@
       processingImage = resized;
       progressCallback({ message: `Large image resized to ${resized.width} × ${resized.height} for responsive Clear Reality processing...`, value: 0 });
     }
+    const [min, max] = normalizationRange;
+    if (!useTiling) {
+      // Diagnostic mode: one 128x128 inference. This is faster and uses less
+      // memory, but it intentionally trades away detail for large images.
+      progressCallback({ message: "Tiles off: one 128 × 128 inference (benchmark mode)...", value: 0.1 });
+      const oneCanvas = document.createElement("canvas");
+      oneCanvas.width = inputWidth;
+      oneCanvas.height = inputHeight;
+      oneCanvas.getContext("2d").drawImage(processingImage, 0, 0, inputWidth, inputHeight);
+      const oneData = oneCanvas.getContext("2d").getImageData(0, 0, inputWidth, inputHeight).data;
+      const oneFloat = new Float32Array(inputWidth * inputHeight * 3);
+      const oneScale = (max - min) / 255;
+      for (let i5 = 0; i5 < oneData.length; i5 += 4) {
+        const j2 = i5 / 4 * 3;
+        oneFloat[j2] = oneData[i5] * oneScale + min;
+        oneFloat[j2 + 1] = oneData[i5 + 1] * oneScale + min;
+        oneFloat[j2 + 2] = oneData[i5 + 2] * oneScale + min;
+      }
+      const oneInput = new Tensor(oneFloat, [1, inputHeight, inputWidth, 3], environment);
+      const oneDeviceInput = accelerator === "webgpu" ? await oneInput.moveTo("webgpu") : oneInput;
+      const [oneOutput] = await model.run([oneDeviceInput]);
+      oneDeviceInput.delete();
+      const oneCpuOutput = accelerator === "webgpu" ? await oneOutput.moveTo("wasm") : oneOutput;
+      const oneOutputData = oneCpuOutput.toTypedArray();
+      oneCpuOutput.delete();
+      const oneOut = document.createElement("canvas");
+      oneOut.width = outputWidth;
+      oneOut.height = outputHeight;
+      const oneOutData = oneOut.getContext("2d").createImageData(outputWidth, outputHeight);
+      for (let i5 = 0; i5 < outputWidth * outputHeight; i5++) {
+        oneOutData.data[i5 * 4] = (oneOutputData[i5 * 3] - min) / oneScale;
+        oneOutData.data[i5 * 4 + 1] = (oneOutputData[i5 * 3 + 1] - min) / oneScale;
+        oneOutData.data[i5 * 4 + 2] = (oneOutputData[i5 * 3 + 2] - min) / oneScale;
+        oneOutData.data[i5 * 4 + 3] = 255;
+      }
+      oneOut.getContext("2d").putImageData(oneOutData, 0, 0);
+      const singleResult = document.createElement("canvas");
+      singleResult.width = processingImage.width * scale;
+      singleResult.height = processingImage.height * scale;
+      singleResult.getContext("2d").drawImage(oneOut, 0, 0, singleResult.width, singleResult.height);
+      progressCallback({ message: "Single-pass benchmark complete", value: 1 });
+      return singleResult;
+    }
     progressCallback({ message: "Preparing image data...", value: 0 });
     const srcCanvas = document.createElement("canvas");
     srcCanvas.width = processingImage.width;
@@ -2385,7 +2429,6 @@
     srcCtx.drawImage(processingImage, 0, 0);
     const srcImageData = srcCtx.getImageData(0, 0, processingImage.width, processingImage.height);
     const float32Data = new Float32Array(processingImage.width * processingImage.height * 3);
-    const [min, max] = normalizationRange;
     const scaleFactor = (max - min) / 255;
     for (let i5 = 0; i5 < srcImageData.data.length; i5 += 4) {
       const j2 = i5 / 4 * 3;
@@ -2411,7 +2454,7 @@
       for (let tileX = 0; tileX < numTilesX; tileX++) {
         const tileIndex = tileY * numTilesX + tileX;
         // Let the browser paint progress and process input between expensive
-        // Clear Reality CPU inference tiles.
+        // Yield between expensive inference tiles so Chrome can repaint.
         await new Promise((resolve) => setTimeout(resolve, 0));
         progressCallback({
           message: `Upscaling tile ${tileIndex + 1} of ${totalTiles}`,
@@ -2502,6 +2545,7 @@
       this.models = {};
       this.selectedModelName = Object.keys(MODELS)[0];
       this.overlapPercent = 10;
+      this.useTiling = true;
       // Which accelerator each compiled model uses ('webgpu' or 'wasm').
       this.modelAccelerators = {};
       this.acceleratorPref = "auto";
@@ -2678,6 +2722,9 @@
       this.selectedModelName = e5.target.value;
       this.loadModel(this.selectedModelName);
     }
+    onTilingChange(e5) {
+      this.useTiling = e5.target.value === "tiles";
+    }
     onAcceleratorChange(e5) {
       this.acceleratorPref = e5.target.value;
       this.models = { ...this.models, [this.selectedModelName]: null };
@@ -2726,6 +2773,7 @@
         // Keep full-resolution tiled processing for low-powered devices.
         // Tiling bounds tensor memory; no quality-reducing resize is applied.
         maxInputDimension: 0,
+        useTiling: this.useTiling,
         progressCallback: ({ message, value }) => {
           this.statusMessage = message;
           this.progressValue = value;
@@ -2825,6 +2873,13 @@
                 GPU (WebGPU)
               </option>
               <option value="wasm">CPU</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="tiling-select">Processing:</label>
+            <select id="tiling-select" @change=${this.onTilingChange}>
+              <option value="tiles" selected>Tiles on (full quality)</option>
+              <option value="single">Tiles off (speed benchmark)</option>
             </select>
           </div>
           <div class="control-group">
