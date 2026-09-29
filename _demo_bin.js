@@ -2524,6 +2524,18 @@
 
   };
   var ImageUpscaler = class extends i4 {
+    // Keep controls discoverable to browsers and accessibility tools that do
+    // not pierce Shadow DOM.
+    createRenderRoot() {
+      const styleId = "image-upscaler-light-dom-styles";
+      if (!document.getElementById(styleId)) {
+        const style = document.createElement("style");
+        style.id = styleId;
+        style.textContent = componentStyles.cssText.replaceAll(":host", "image-upscaler");
+        document.head.appendChild(style);
+      }
+      return this;
+    }
     constructor() {
       super(...arguments);
       this.statusMessage = "Initializing LiteRT...";
