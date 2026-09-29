@@ -2354,7 +2354,8 @@
     environment,
     overlapPercent,
     normalizationRange,
-    progressCallback
+    progressCallback,
+    maxInputDimension = 0
   }) {
     const inputDetails = model.getInputDetails()[0];
     const outputDetails = model.getOutputDetails()[0];
@@ -2366,14 +2367,24 @@
         "Model scale factor is not consistent between height and width."
       );
     }
+    let processingImage = sourceImage;
+    if (maxInputDimension > 0 && Math.max(sourceImage.width, sourceImage.height) > maxInputDimension) {
+      const resizeScale = maxInputDimension / Math.max(sourceImage.width, sourceImage.height);
+      const resized = document.createElement("canvas");
+      resized.width = Math.max(1, Math.round(sourceImage.width * resizeScale));
+      resized.height = Math.max(1, Math.round(sourceImage.height * resizeScale));
+      resized.getContext("2d").drawImage(sourceImage, 0, 0, resized.width, resized.height);
+      processingImage = resized;
+      progressCallback({ message: `Large image resized to ${resized.width} × ${resized.height} for responsive Clear Reality processing...`, value: 0 });
+    }
     progressCallback({ message: "Preparing image data...", value: 0 });
     const srcCanvas = document.createElement("canvas");
-    srcCanvas.width = sourceImage.width;
-    srcCanvas.height = sourceImage.height;
+    srcCanvas.width = processingImage.width;
+    srcCanvas.height = processingImage.height;
     const srcCtx = srcCanvas.getContext("2d");
-    srcCtx.drawImage(sourceImage, 0, 0);
-    const srcImageData = srcCtx.getImageData(0, 0, sourceImage.width, sourceImage.height);
-    const float32Data = new Float32Array(sourceImage.width * sourceImage.height * 3);
+    srcCtx.drawImage(processingImage, 0, 0);
+    const srcImageData = srcCtx.getImageData(0, 0, processingImage.width, processingImage.height);
+    const float32Data = new Float32Array(processingImage.width * processingImage.height * 3);
     const [min, max] = normalizationRange;
     const scaleFactor = (max - min) / 255;
     for (let i5 = 0; i5 < srcImageData.data.length; i5 += 4) {
@@ -2386,12 +2397,12 @@
     const overlapY = Math.floor(inputHeight * (overlapPercent / 100));
     const stepSizeX = inputWidth - overlapX;
     const stepSizeY = inputHeight - overlapY;
-    const numTilesX = sourceImage.width <= inputWidth ? 1 : Math.ceil((sourceImage.width - inputWidth) / stepSizeX) + 1;
-    const numTilesY = sourceImage.height <= inputHeight ? 1 : Math.ceil((sourceImage.height - inputHeight) / stepSizeY) + 1;
+    const numTilesX = processingImage.width <= inputWidth ? 1 : Math.ceil((processingImage.width - inputWidth) / stepSizeX) + 1;
+    const numTilesY = processingImage.height <= inputHeight ? 1 : Math.ceil((processingImage.height - inputHeight) / stepSizeY) + 1;
     const totalTiles = numTilesX * numTilesY;
     const outCanvas = document.createElement("canvas");
-    const outWidth = sourceImage.width * scale;
-    const outHeight = sourceImage.height * scale;
+    const outWidth = processingImage.width * scale;
+    const outHeight = processingImage.height * scale;
     outCanvas.width = outWidth;
     outCanvas.height = outHeight;
     const outCtx = outCanvas.getContext("2d");
@@ -2399,22 +2410,25 @@
     for (let tileY = 0; tileY < numTilesY; tileY++) {
       for (let tileX = 0; tileX < numTilesX; tileX++) {
         const tileIndex = tileY * numTilesX + tileX;
+        // Let the browser paint progress and process input between expensive
+        // Clear Reality CPU inference tiles.
+        await new Promise((resolve) => setTimeout(resolve, 0));
         progressCallback({
           message: `Upscaling tile ${tileIndex + 1} of ${totalTiles}`,
           value: (tileIndex + 1) / totalTiles
         });
         let startX = tileX * stepSizeX;
         let startY = tileY * stepSizeY;
-        if (startX + inputWidth > sourceImage.width) {
-          startX = sourceImage.width - inputWidth;
+        if (startX + inputWidth > processingImage.width) {
+          startX = processingImage.width - inputWidth;
         }
-        if (startY + inputHeight > sourceImage.height) {
-          startY = sourceImage.height - inputHeight;
+        if (startY + inputHeight > processingImage.height) {
+          startY = processingImage.height - inputHeight;
         }
         const tileData = new Float32Array(inputWidth * inputHeight * 3);
         for (let y3 = 0; y3 < inputHeight; y3++) {
           for (let x2 = 0; x2 < inputWidth; x2++) {
-            const srcIdx = ((startY + y3) * sourceImage.width + (startX + x2)) * 3;
+            const srcIdx = ((startY + y3) * processingImage.width + (startX + x2)) * 3;
             const destIdx = (y3 * inputWidth + x2) * 3;
             tileData[destIdx] = float32Data[srcIdx];
             tileData[destIdx + 1] = float32Data[srcIdx + 1];
@@ -2481,18 +2495,6 @@
     }
   };
   var ImageUpscaler = class extends i4 {
-    // Render in light DOM so browser automation and accessibility tools that
-    // do not pierce Shadow DOM can still discover and activate the controls.
-    createRenderRoot() {
-      const styleId = "image-upscaler-light-dom-styles";
-      if (!document.getElementById(styleId)) {
-        const style = document.createElement("style");
-        style.id = styleId;
-        style.textContent = componentStyles.cssText.replaceAll(":host", "image-upscaler");
-        document.head.appendChild(style);
-      }
-      return this;
-    }
     constructor() {
       super(...arguments);
       this.statusMessage = "Initializing LiteRT...";
@@ -2734,6 +2736,7 @@
         environment: cpuEnv,
         overlapPercent: this.overlapPercent,
         normalizationRange: modelInfo.range,
+        maxInputDimension: this.selectedModelName === "ClearReality-x4" ? 1536 : 0,
         progressCallback: ({ message, value }) => {
           this.statusMessage = message;
           this.progressValue = value;
@@ -2845,7 +2848,7 @@
               .value=${`${this.overlapPercent}`}
               @input=${(e5) => this.overlapPercent = Number(e5.target.value)}>
           </div>
-          <button id="upscale-button" aria-label="Upscale image" @click=${this.handleUpscale} .disabled=${!this.originalImage || (!MODELS[this.selectedModelName]?.none && !currentModel) || this.isUpscaling}>
+          <button @click=${this.handleUpscale} .disabled=${!this.originalImage || (!MODELS[this.selectedModelName]?.none && !currentModel) || this.isUpscaling}>
             ${this.isUpscaling ? "Working..." : "\u{1F680} Upscale"}
           </button>
         </div>
