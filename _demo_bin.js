@@ -2478,21 +2478,7 @@
       range: [0, 1]
       // Normalizes to [0, 1]
     },
-    "ClearReality-x4": {
-      url: "./models/ClearReality-x4_float32.tflite",
-      // ClearReality is more reliable on the CPU backend by default.
-      // Users can still opt into GPU explicitly from the processor menu.
-      preferredAccelerator: "wasm",
-      licenseHtml: x`
-      <div class="license-info">
-        <a href="https://huggingface.co/Kim2091/ClearRealityV1" target="_blank">Model: ClearReality-x4 by Kim2091</a>
-        |
-        <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank">Apache-2.0 License</a>
-      </div>
-    `,
-      range: [0, 1]
-      // Normalizes to [0, 1]
-    }
+
   };
   var ImageUpscaler = class extends i4 {
     constructor() {
@@ -2594,7 +2580,8 @@
       let lastError = null;
       try {
         const modelData = await this.downloadModel(modelInfo.url);
-        const accelerators = this.acceleratorPref === "webgpu" ? ["webgpu"] : this.acceleratorPref === "wasm" ? ["wasm"] : modelInfo.preferredAccelerator ? [modelInfo.preferredAccelerator] : isWebGPUSupported() ? ["webgpu", "wasm"] : ["wasm"];
+        // Chrome/Chromebook: prefer WebGPU, with isolated WASM fallback.
+        const accelerators = this.acceleratorPref === "webgpu" ? ["webgpu"] : this.acceleratorPref === "wasm" ? ["wasm"] : isWebGPUSupported() ? ["webgpu", "wasm"] : ["wasm"];
         for (const accelerator of accelerators) {
           this.statusMessage = accelerator === "wasm" && lastError ? "WebGPU failed, falling back to CPU\u2026" : `Compiling ${name} (${accelerator === "webgpu" ? "GPU" : "CPU"})\u2026`;
           try {
@@ -2734,9 +2721,11 @@
         model,
         accelerator,
         environment: cpuEnv,
-        overlapPercent: this.overlapPercent,
+        overlapPercent: accelerator === "webgpu" ? Math.min(this.overlapPercent, 5) : this.overlapPercent,
         normalizationRange: modelInfo.range,
-        maxInputDimension: this.selectedModelName === "ClearReality-x4" ? 1536 : 0,
+        // Keep Chromebook CPU memory bounded for very large photos; WebGPU
+        // keeps the original dimensions for maximum quality.
+        maxInputDimension: accelerator === "wasm" ? 2048 : 0,
         progressCallback: ({ message, value }) => {
           this.statusMessage = message;
           this.progressValue = value;
@@ -2988,4 +2977,3 @@ lit-html/is-server.js:
    * SPDX-License-Identifier: BSD-3-Clause
    *)
 */
-//# sourceMappingURL=_demo_bin.js.map
