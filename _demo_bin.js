@@ -2466,6 +2466,9 @@
     },
     "ClearReality-x4": {
       url: "./models/ClearReality-x4_float32.tflite",
+      // ClearReality is more reliable on the CPU backend by default.
+      // Users can still opt into GPU explicitly from the processor menu.
+      preferredAccelerator: "wasm",
       licenseHtml: x`
       <div class="license-info">
         <a href="https://huggingface.co/Kim2091/ClearRealityV1" target="_blank">Model: ClearReality-x4 by Kim2091</a>
@@ -2577,7 +2580,7 @@
       let lastError = null;
       try {
         const modelData = await this.downloadModel(modelInfo.url);
-        const accelerators = this.acceleratorPref === "webgpu" ? ["webgpu"] : this.acceleratorPref === "wasm" ? ["wasm"] : isWebGPUSupported() ? ["webgpu", "wasm"] : ["wasm"];
+        const accelerators = this.acceleratorPref === "webgpu" ? ["webgpu"] : this.acceleratorPref === "wasm" ? ["wasm"] : modelInfo.preferredAccelerator ? [modelInfo.preferredAccelerator] : isWebGPUSupported() ? ["webgpu", "wasm"] : ["wasm"];
         for (const accelerator of accelerators) {
           this.statusMessage = accelerator === "wasm" && lastError ? "WebGPU failed, falling back to CPU\u2026" : `Compiling ${name} (${accelerator === "webgpu" ? "GPU" : "CPU"})\u2026`;
           try {
