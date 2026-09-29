@@ -2481,6 +2481,18 @@
     }
   };
   var ImageUpscaler = class extends i4 {
+    // Render in light DOM so browser automation and accessibility tools that
+    // do not pierce Shadow DOM can still discover and activate the controls.
+    createRenderRoot() {
+      const styleId = "image-upscaler-light-dom-styles";
+      if (!document.getElementById(styleId)) {
+        const style = document.createElement("style");
+        style.id = styleId;
+        style.textContent = componentStyles.cssText.replaceAll(":host", "image-upscaler");
+        document.head.appendChild(style);
+      }
+      return this;
+    }
     constructor() {
       super(...arguments);
       this.statusMessage = "Initializing LiteRT...";
@@ -2833,7 +2845,7 @@
               .value=${`${this.overlapPercent}`}
               @input=${(e5) => this.overlapPercent = Number(e5.target.value)}>
           </div>
-          <button @click=${this.handleUpscale} .disabled=${!this.originalImage || (!MODELS[this.selectedModelName]?.none && !currentModel) || this.isUpscaling}>
+          <button id="upscale-button" aria-label="Upscale image" @click=${this.handleUpscale} .disabled=${!this.originalImage || (!MODELS[this.selectedModelName]?.none && !currentModel) || this.isUpscaling}>
             ${this.isUpscaling ? "Working..." : "\u{1F680} Upscale"}
           </button>
         </div>
