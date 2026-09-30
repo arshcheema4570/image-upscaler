@@ -1,17 +1,22 @@
 /* Image Upscaler PWA service worker.
- * - Install: cache-first app shell + the bundled .tflite models
- *   (relative URLs resolve under the SW scope, so this works at any subpath,
- *   e.g. GitHub Pages project sites).
- * - Model files are reused from a previous cache version when present, so
- *   app updates don't re-download it (unreliable on mobile data and it would
- *   otherwise block the whole SW update).
- * - One bad file never fails the entire install; the runtime handler caches
- *   missing files on demand.
- * - Runtime: cache-first for same-origin requests (LiteRT wasm runtime).
+ * - Install: cache-first app shell + bundled model and LiteRT WASM assets.
+ * - All runtime assets are same-origin so the app remains usable offline after install.
+ * - Model files are reused from a previous cache version when present.
+ * - One bad file never fails the entire install; the runtime handler caches missing files on demand.
  */
-const VERSION = 'upscaler-v36';
+const VERSION = 'upscaler-v37';
 const MODEL_PATHS = [
   './models/RealESR-General-x4v3_float32.tflite',
+];
+const WASM_PATHS = [
+  './wasm/litert_wasm_compat_internal.js',
+  './wasm/litert_wasm_compat_internal.wasm',
+  './wasm/litert_wasm_internal.js',
+  './wasm/litert_wasm_internal.wasm',
+  './wasm/litert_wasm_jspi_internal.js',
+  './wasm/litert_wasm_jspi_internal.wasm',
+  './wasm/litert_wasm_threaded_internal.js',
+  './wasm/litert_wasm_threaded_internal.wasm',
 ];
 
 const APP_SHELL = [
@@ -22,17 +27,14 @@ const APP_SHELL = [
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
-  // Model files, bundled same-origin (fixes HuggingFace CORS redirect issues
-  // and makes the app fully offline-capable after install).
   ...MODEL_PATHS,
+  ...WASM_PATHS,
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(VERSION);
     const modelURLs = MODEL_PATHS.map((p) => new URL(p, self.location).href);
-    // Reuse model files from a previous cache version instead of
-    // re-downloading them on every app update.
     const reused = new Set();
     try {
       const keys = await caches.keys();
@@ -55,9 +57,7 @@ self.addEventListener('install', (event) => {
       APP_SHELL.map(async (url) => {
         try {
           const abs = new URL(url, self.location).href;
-          if (reused.has(abs)) return; // already copied
-          // cache:'reload' bypasses the HTTP cache so updates never install
-          // a stale copy of a file that changed on the server.
+          if (reused.has(abs)) return;
           await cache.add(new Request(url, {cache: 'reload'}));
         } catch (e) {
           console.warn('SW: pre-cache failed for', url, e);
@@ -71,9 +71,9 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) =>
-        Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k)))
-      )
+      .then((keys) => Promise.all(
+        keys.filter((k) => k !== VERSION).map((k) => caches.delete(k))
+      ))
       .then(() => self.clients.claim())
   );
 });
@@ -81,9 +81,8 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const {request} = event;
   if (request.method !== 'GET') return;
-
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return; // same-origin only
+  if (url.origin !== self.location.origin) return;
 
   event.respondWith(
     caches.match(request).then((hit) => {
