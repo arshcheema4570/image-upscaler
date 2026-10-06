@@ -4,7 +4,7 @@
  * - Model files are reused from a previous cache version when present.
  * - One bad file never fails the entire install; the runtime handler caches missing files on demand.
  */
-const VERSION = 'upscaler-v37';
+const VERSION = 'upscaler-v38';
 const MODEL_PATHS = [
   './models/RealESR-General-x4v3_float32.tflite',
 ];
@@ -83,6 +83,7 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  if (!url.pathname.startsWith(new URL(self.registration.scope).pathname)) return;
 
   event.respondWith(
     caches.match(request).then((hit) => {
