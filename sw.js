@@ -4,7 +4,7 @@
  * - Model files are reused from a previous cache version when present.
  * - One bad file never fails the entire install; the runtime handler caches missing files on demand.
  */
-const VERSION = 'upscaler-v38';
+const VERSION = 'upscaler-v39';
 const MODEL_PATHS = [
   './models/RealESR-General-x4v3_float32.tflite',
 ];
@@ -13,16 +13,12 @@ const WASM_PATHS = [
   './wasm/litert_wasm_compat_internal.wasm',
   './wasm/litert_wasm_internal.js',
   './wasm/litert_wasm_internal.wasm',
-  './wasm/litert_wasm_jspi_internal.js',
-  './wasm/litert_wasm_jspi_internal.wasm',
-  './wasm/litert_wasm_threaded_internal.js',
-  './wasm/litert_wasm_threaded_internal.wasm',
 ];
 
 const APP_SHELL = [
   './',
   './index.html',
-  './_demo_bin.js?v=36',
+  './_demo_bin.js?v=37',
   './manifest.json',
   './icons/icon.svg',
   './icons/icon-192.png',

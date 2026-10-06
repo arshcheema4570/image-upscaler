@@ -8,6 +8,7 @@ A free, offline-capable PWA that enlarges images **4×** in your browser using t
 
 - Select or drop an image, choose the available processing accelerator, adjust tile overlap, and upscale locally.
 - Uses WebGPU when supported; CPU processing is available as a slower fallback.
+- LiteRT/WASM initialization and model compilation start after you choose an image, keeping the app shell responsive before use.
 - The service worker caches the app shell, model, and runtime assets for subsequent offline use after they have downloaded successfully.
 - No account or cloud image-upload service is required. Image processing runs in the browser; the initial model/runtime download can be large.
 

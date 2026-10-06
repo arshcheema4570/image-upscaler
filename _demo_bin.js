@@ -989,8 +989,10 @@
       this.onDelete();
     }
   };
-  function isWebGPUSupported() {
-    return !!(typeof globalThis !== "undefined" && globalThis.navigator && globalThis.navigator.gpu);
+  async function isWebGPUSupported() {
+    const gpu = globalThis.navigator?.gpu;
+    if (!gpu || typeof gpu.requestAdapter !== "function") return false;
+    try { return !!(await gpu.requestAdapter()); } catch { return false; }
   }
   function loadAndCompile(model, compileOptions) {
     return getGlobalLiteRt().loadAndCompile(model, compileOptions);
@@ -2495,7 +2497,7 @@
     }
     constructor() {
       super(...arguments);
-      this.statusMessage = "Initializing LiteRT...";
+      this.statusMessage = "Select an image to load the upscaling engine.";
       this.progressValue = 0;
       this.originalImage = null;
       this.originalSrc = "";
@@ -2512,6 +2514,9 @@
       this.comparisonContainerRect = null;
       this.dragStartX = null;
       this.models = {};
+      this.liteRtLoaded = false;
+      this.liteRtPromise = null;
+      this.modelLoadPromise = null;
       this.selectedModelName = Object.keys(MODELS)[0];
       this.overlapPercent = 10;
       // Which accelerator each compiled model uses ('webgpu' or 'wasm').
@@ -2562,15 +2567,32 @@
         window.addEventListener("pointercancel", this.stopDrag);
       };
     }
-    async firstUpdated() {
+    firstUpdated() {
+      // Defer WASM/model compilation until the user chooses an image. This
+      // keeps the initial interface responsive and avoids work when unused.
+    }
+    async ensureModelLoaded(name) {
+      if (this.models[name]) return this.models[name];
+      if (!this.modelLoadPromise) {
+        this.modelLoadPromise = (async () => {
+          if (!this.liteRtLoaded) {
+            if (!this.liteRtPromise) this.liteRtPromise = loadLiteRt("./wasm/");
+            await this.liteRtPromise;
+            this.liteRtLoaded = true;
+          }
+          await this.loadModel(name);
+        })();
+      }
       try {
-        await loadLiteRt("./wasm/");
-        this.statusMessage = "Ready. Please select an image.";
-        await this.loadModel(this.selectedModelName);
+        await this.modelLoadPromise;
       } catch (e5) {
+        this.liteRtPromise = null;
         this.statusMessage = `Error initializing LiteRT: ${e5.message}`;
         console.error(e5);
+      } finally {
+        this.modelLoadPromise = null;
       }
+      return this.models[name] || null;
     }
     /**
      * Dedicated CPU-only LiteRT environment (no WebGPU device). The default
@@ -2593,7 +2615,7 @@
       try {
         const modelData = await this.downloadModel(modelInfo.url);
         // Chrome/Chromebook: prefer WebGPU, with isolated WASM fallback.
-        const accelerators = this.acceleratorPref === "webgpu" ? ["webgpu"] : this.acceleratorPref === "wasm" ? ["wasm"] : isWebGPUSupported() ? ["webgpu", "wasm"] : ["wasm"];
+        const accelerators = this.acceleratorPref === "webgpu" ? ["webgpu"] : this.acceleratorPref === "wasm" ? ["wasm"] : await isWebGPUSupported() ? ["webgpu", "wasm"] : ["wasm"];
         for (const accelerator of accelerators) {
           this.statusMessage = accelerator === "wasm" && lastError ? "WebGPU failed, falling back to CPU\u2026" : `Compiling ${name} (${accelerator === "webgpu" ? "GPU" : "CPU"})\u2026`;
           try {
@@ -2601,11 +2623,12 @@
             const model = await loadAndCompile(modelData, { accelerator, environment: compileEnv });
             this.models = { ...this.models, [name]: model };
             this.modelAccelerators = { ...this.modelAccelerators, [name]: accelerator };
-            this.statusMessage = accelerator === "webgpu" ? "Ready. Please select an image." : "Ready (CPU mode \u2014 upscaling will be slower). Please select an image.";
+            this.statusMessage = accelerator === "webgpu" ? "Ready to upscale." : "Ready (CPU mode \u2014 upscaling will be slower).";
             return;
           } catch (e5) {
             lastError = e5;
-            console.error(`Failed to compile model with ${accelerator}:`, e5);
+            if (accelerator === "webgpu" && accelerators.includes("wasm")) console.info("WebGPU unavailable; falling back to CPU.", e5);
+            else console.error(`Failed to compile model with ${accelerator}:`, e5);
           }
         }
       } catch (e5) {
@@ -2655,11 +2678,11 @@
         }
       }
       throw new Error(
-        `Could not download the 67 MB model file (${lastError?.message ?? lastError}). Connect to Wi-Fi and reload to retry.`
+        `Could not download the upscaling model (${lastError?.message ?? lastError}). Connect to Wi-Fi and reload to retry.`
       );
     }
     handleFileSelect(file) {
-      if (!file.type.startsWith("image/")) {
+      if (!file || !file.type.startsWith("image/")) {
         this.statusMessage = "Please select an image file.";
         return;
       }
@@ -2670,10 +2693,14 @@
         img.onload = () => {
           this.originalImage = img;
           this.upscaledCanvas = null;
+          this.statusMessage = "Image loaded. Preparing the upscaling engine…";
+          void this.ensureModelLoaded(this.selectedModelName);
+        };
+        img.onerror = () => {
+          this.statusMessage = "Could not decode this image. Try a different file.";
         };
         this.originalSrc = e5.target?.result;
         img.src = this.originalSrc;
-        this.statusMessage = 'Image loaded. Click "Upscale".';
       };
       reader.readAsDataURL(file);
     }
@@ -2688,12 +2715,12 @@
     }
     onModelChange(e5) {
       this.selectedModelName = e5.target.value;
-      this.loadModel(this.selectedModelName);
+      void this.ensureModelLoaded(this.selectedModelName);
     }
     onAcceleratorChange(e5) {
       this.acceleratorPref = e5.target.value;
       this.models = { ...this.models, [this.selectedModelName]: null };
-      this.loadModel(this.selectedModelName);
+      void this.ensureModelLoaded(this.selectedModelName);
     }
     renderComparison() {
       return x`
